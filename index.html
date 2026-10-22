@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>P2P 通話アプリ</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">◉</div>
+      <div class="brand-copy">
+        <h1>P2P 通話</h1>
+        <p>音声・ビデオを直接つなぐシンプルな通話ルーム</p>
+      </div>
+      <div class="status-pill" id="overallStatus" data-state="idle">
+        <span class="status-dot"></span><span id="overallStatusText">未接続</span>
+      </div>
+    </header>
+    <main>
+      <section class="setup-card panel">
+        <div class="section-heading"><div><p class="eyebrow">ROOM SETUP</p><h2>ルームに参加</h2></div><span class="step-tag">STEP 1</span></div>
+        <p class="helper">同じルームIDを使って、片方が「ルームを作成」、もう片方が「参加」します。</p>
+        <label class="field-label" for="displayName">表示名</label>
+        <input id="displayName" class="text-input" maxlength="32" autocomplete="nickname" placeholder="例：たろう">
+        <label class="field-label" for="roomId">ルームID</label>
+        <div class="room-input-row"><input id="roomId" class="text-input room-input" maxlength="40" autocomplete="off" placeholder="例：team-room-123"><button id="generateRoomBtn" class="button button-subtle" type="button">自動生成</button></div>
+        <p class="microcopy">ルームIDは参加者に共有してください。個人情報や推測されやすい文字列は避けてください。</p>
+        <div class="action-row"><button id="createRoomBtn" class="button button-primary" type="button"><span aria-hidden="true">＋</span> ルームを作成</button><button id="joinRoomBtn" class="button button-secondary" type="button"><span aria-hidden="true">↗</span> ルームに参加</button></div>
+        <div class="notice" id="setupNotice" role="status" aria-live="polite"><span class="notice-icon" aria-hidden="true">ⓘ</span><span>通話を始めるときに、マイク・カメラへのアクセスを許可してください。</span></div>
+      </section>
+      <section class="call-card panel">
+        <div class="section-heading call-heading"><div><p class="eyebrow">LIVE SESSION</p><h2>通話画面</h2></div><div class="connection-label" id="connectionLabel"><span class="status-dot"></span><span id="connectionText">待機中</span></div></div>
+        <div class="video-grid" id="videoGrid">
+          <article class="video-tile local-tile" id="localTile"><video id="localVideo" autoplay muted playsinline></video><div class="video-placeholder" id="localPlaceholder"><div class="avatar">ME</div><strong>あなた</strong><span>カメラはオフです</span></div><div class="tile-caption"><span class="live-indicator"></span><span id="localNameLabel">あなた（自分）</span><span class="you-tag">自分</span></div></article>
+          <div class="empty-state" id="emptyState"><div class="empty-icon" aria-hidden="true">⌁</div><h3>通話相手を待っています</h3><p>ルームを作成するか、ルームIDで参加してください。</p></div>
+          <div id="remoteTiles" class="remote-tiles" aria-live="polite"></div>
+        </div>
+        <div class="call-toolbar"><button class="control-button" id="micBtn" type="button" disabled aria-pressed="true"><span class="control-icon" id="micIcon" aria-hidden="true">🎙</span><span id="micLabel">マイク ON</span></button><button class="control-button" id="cameraBtn" type="button" disabled aria-pressed="true"><span class="control-icon" id="cameraIcon" aria-hidden="true">▣</span><span id="cameraLabel">カメラ ON</span></button><button class="control-button control-danger" id="endCallBtn" type="button" disabled><span class="control-icon" aria-hidden="true">☎</span><span>通話終了</span></button></div>
+        <p class="call-footnote" id="callFootnote">通話はブラウザ間でP2P接続します。接続の仲介には外部シグナリングサービスを利用します。</p>
+      </section>
+      <section class="details-card panel">
+        <div class="section-heading"><div><p class="eyebrow">CONNECTION DETAILS</p><h2>接続情報</h2></div><span class="step-tag">INFO</span></div>
+        <div class="details-grid">
+          <div class="detail-item"><span>あなたの接続ID</span><strong id="myPeerId">未発行</strong><button class="copy-mini" id="copyPeerIdBtn" type="button" disabled>コピー</button></div>
+          <div class="detail-item"><span>ルームID</span><strong id="activeRoomId">—</strong><button class="copy-mini" id="copyRoomIdBtn" type="button">コピー</button></div>
+          <div class="detail-item"><span>参加者</span><strong id="participantCount">1人</strong></div><div class="detail-item"><span>接続方式</span><strong>WebRTC / P2P</strong></div>
+        </div>
+        <div class="log-area"><div class="log-header"><strong>イベントログ</strong><button id="clearLogBtn" class="text-button" type="button">ログを消去</button></div><ol id="eventLog" class="event-log" aria-live="polite"><li><time>開始</time><span>アプリを起動しました。</span></li></ol></div>
+      </section>
+    </main>
+    <footer class="footer"><span>🔒 P2P 通話デモ</span><span>初回はマイク・カメラの許可が必要です</span></footer>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
