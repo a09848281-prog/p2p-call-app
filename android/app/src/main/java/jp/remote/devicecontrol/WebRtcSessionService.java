@@ -19,6 +19,7 @@ import android.content.pm.PackageManager;
 import org.json.JSONObject;
 import org.json.JSONArray;
 import org.webrtc.*;
+import org.webrtc.Camera1Enumerator;
 
 import java.util.Collections;
 import java.util.List;
@@ -37,6 +38,9 @@ public class WebRtcSessionService extends Service {
     private static final int NOTIFICATION_ID = 42;
 
     private final ScheduledExecutorService io = Executors.newSingleThreadScheduledExecutor();
+    private final ExecutorService startup = Executors.newSingleThreadExecutor();
+    private static volatile boolean webRtcInitialized = false;
+    private volatile String startupStage = "待機中";
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final List<IceCandidate> pendingLocalIce = Collections.synchronizedList(new ArrayList<>());
     private final List<IceCandidate> pendingRemoteIce = Collections.synchronizedList(new ArrayList<>());
@@ -70,7 +74,7 @@ public class WebRtcSessionService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_START.equals(intent.getAction()) && !active) {
-            startCameraMicrophoneSession();
+            beginSession();
         }
         return START_NOT_STICKY;
     }
@@ -101,6 +105,31 @@ public class WebRtcSessionService extends Service {
         }
     }
 
+    private void beginSession() {
+        try {
+            if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+                throw new SecurityException("カメラの権限がありません。");
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+                throw new SecurityException("マイクの権限がありません。");
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            if (power == null) throw new Exception("電源管理サービスを取得できません。");
+            Notification notification = buildNotification("カメラ・マイクを準備しています。");
+            if (Build.VERSION.SDK_INT >= 29) {
+                startForeground(NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                startForeground(NOTIFICATION_ID, notification);
+            }
+            active = true;
+            startupStage = "バックグラウンド初期化";
+            startup.execute(this::startCameraMicrophoneSession);
+        } catch (Exception error) {
+            fail("開始準備に失敗: " + (error.getMessage() == null ? error.toString() : error.getMessage()));
+        } catch (LinkageError error) {
+            fail("Androidネイティブ機能の読み込みに失敗: " + error);
+        }
+    }
+
     private void startCameraMicrophoneSession() {
         try {
             if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
@@ -111,15 +140,7 @@ public class WebRtcSessionService extends Service {
             PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
             if (power == null) throw new Exception("電源管理サービスを取得できません。");
 
-            Notification notification = buildNotification("カメラ・マイクを使用中です。停止するには通知をタップしてください。");
-            if (Build.VERSION.SDK_INT >= 29) {
-                startForeground(NOTIFICATION_ID, notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-            } else {
-                startForeground(NOTIFICATION_ID, notification);
-            }
-
-            active = true;
+            startupStage = "WakeLock準備";
             wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RemoteDeviceControl:MediaSession");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(6L * 60L * 60L * 1000L);
@@ -127,15 +148,23 @@ public class WebRtcSessionService extends Service {
             SharedPreferences prefs = getSharedPreferences("rdc", MODE_PRIVATE);
             sessionId = UUID.randomUUID().toString();
 
-            PeerConnectionFactory.initialize(
-                PeerConnectionFactory.InitializationOptions.builder(getApplicationContext()).createInitializationOptions()
-            );
+            startupStage = "WebRTCネイティブ初期化";
+            synchronized (WebRtcSessionService.class) {
+                if (!webRtcInitialized) {
+                    PeerConnectionFactory.initialize(
+                        PeerConnectionFactory.InitializationOptions.builder(getApplicationContext()).createInitializationOptions()
+                    );
+                    webRtcInitialized = true;
+                }
+            }
+            startupStage = "EGL初期化";
             egl = EglBase.create();
             factory = PeerConnectionFactory.builder()
                 .setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(), true, true))
                 .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()))
                 .createPeerConnectionFactory();
 
+            startupStage = "PeerConnection作成";
             PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(buildIceServers(prefs));
             configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
             configuration.iceCandidatePoolSize = 4;
@@ -165,6 +194,7 @@ public class WebRtcSessionService extends Service {
             });
             if (peer == null) throw new Exception("WebRTC接続を作成できません。");
 
+            startupStage = "マイク初期化";
             MediaConstraints audioConstraints = new MediaConstraints();
             audioConstraints.mandatory.add(new MediaConstraints.KeyValuePair("googEchoCancellation", "true"));
             audioConstraints.mandatory.add(new MediaConstraints.KeyValuePair("googNoiseSuppression", "true"));
@@ -174,16 +204,19 @@ public class WebRtcSessionService extends Service {
             audioTrack.setEnabled(true);
             peer.addTrack(audioTrack, Collections.singletonList("rdc_stream"));
 
+            startupStage = "カメラ選択";
             cameraCapturer = createCameraCapturer();
-            if (cameraCapturer == null) throw new Exception("使用できるカメラが見つかりません。");
+            if (cameraCapturer == null) throw new Exception("Camera2/Camera1のどちらでもカメラが見つかりません。");
             textureHelper = SurfaceTextureHelper.create("RDC-Camera", egl.getEglBaseContext());
             videoSource = factory.createVideoSource(false);
             cameraCapturer.initialize(textureHelper, getApplicationContext(), videoSource.getCapturerObserver());
             videoTrack = factory.createVideoTrack("rdc_video", videoSource);
             videoTrack.setEnabled(true);
             peer.addTrack(videoTrack, Collections.singletonList("rdc_stream"));
+            startupStage = "カメラ映像取得開始";
             cameraCapturer.startCapture(640, 480, 15);
 
+            startupStage = "接続情報作成";
             MediaConstraints offerConstraints = new MediaConstraints();
             peer.createOffer(new SdpObserver() {
                 @Override public void onCreateSuccess(SessionDescription offer) {
@@ -210,7 +243,9 @@ public class WebRtcSessionService extends Service {
             io.scheduleWithFixedDelay(this::pollSignals, 1, 2, TimeUnit.SECONDS);
             notifyStatus("カメラ・マイクを開始しました。画面ロック後も継続を試みます。");
         } catch (Exception error) {
-            fail("開始失敗: " + (error.getMessage() == null ? error.toString() : error.getMessage()));
+            fail("開始失敗（" + startupStage + "）: " + (error.getMessage() == null ? error.toString() : error.getMessage()));
+        } catch (LinkageError error) {
+            fail("ネイティブ処理失敗（" + startupStage + "）: " + error);
         }
     }
 
@@ -256,18 +291,38 @@ public class WebRtcSessionService extends Service {
     }
 
     private VideoCapturer createCameraCapturer() {
-        Camera2Enumerator enumerator = new Camera2Enumerator(this);
+        if (Camera2Enumerator.isSupported(this)) {
+            try {
+                VideoCapturer capturer = findCapturer(new Camera2Enumerator(this));
+                if (capturer != null) return capturer;
+            } catch (RuntimeException error) {
+                notifyStatus("Camera2を利用できないためCamera1を試します。");
+            }
+        }
+        try {
+            return findCapturer(new Camera1Enumerator(true));
+        } catch (RuntimeException error) {
+            notifyStatus("Camera1初期化失敗: " + error.getMessage());
+            return null;
+        }
+    }
+
+    private VideoCapturer findCapturer(CameraEnumerator enumerator) {
         String[] names = enumerator.getDeviceNames();
         for (String name : names) {
             if (enumerator.isFrontFacing(name)) {
-                VideoCapturer capturer = enumerator.createCapturer(name, null);
-                if (capturer != null) return capturer;
+                try {
+                    VideoCapturer capturer = enumerator.createCapturer(name, null);
+                    if (capturer != null) return capturer;
+                } catch (RuntimeException ignored) {}
             }
         }
         for (String name : names) {
             if (enumerator.isBackFacing(name)) {
-                VideoCapturer capturer = enumerator.createCapturer(name, null);
-                if (capturer != null) return capturer;
+                try {
+                    VideoCapturer capturer = enumerator.createCapturer(name, null);
+                    if (capturer != null) return capturer;
+                } catch (RuntimeException ignored) {}
             }
         }
         return null;
@@ -364,6 +419,11 @@ public class WebRtcSessionService extends Service {
     }
 
     private void fail(String message) {
+        active = false;
+        getSharedPreferences("rdc", MODE_PRIVATE).edit()
+            .putString("lastMediaError", message)
+            .putLong("lastMediaErrorAt", System.currentTimeMillis())
+            .apply();
         notifyStatus(message);
         stopSelf();
     }
@@ -406,6 +466,7 @@ public class WebRtcSessionService extends Service {
 
     @Override public void onDestroy() {
         active = false;
+        startup.shutdownNow();
         io.shutdownNow();
         network.shutdownNow();
         if (cameraCapturer != null) {
