@@ -10,7 +10,7 @@
 <main>
 <section class="panel"><h2>GAS接続設定</h2><label for="gasUrl">GAS WebアプリURL</label><input id="gasUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"><button id="saveUrl" class="secondary">URLを保存</button><p class="hint">URLはこのiPadのブラウザ内に保存されます。</p></section>
 <section class="panel"><div class="row"><h2>登録済み端末</h2><button id="refresh" class="secondary">更新</button></div><div id="devices" class="devices"><p class="empty">GAS URLを設定して「更新」を押してください。</p></div></section>
-<section class="panel"><h2>新しいAndroidを登録</h2><p class="hint">Androidアプリに表示されたペアリングコードを入力してください。</p><label for="pairCode">ペアリングコード</label><input id="pairCode" inputmode="numeric" maxlength="8" placeholder="例：482915"><label for="deviceName">端末名</label><input id="deviceName" maxlength="40" placeholder="Android-01"><button id="pair" class="primary">端末を登録</button><p id="message" role="status" class="message"></p></section>
+<section class="panel"><h2>新しいAndroidを登録</h2><p class="hint">iPadで登録コードを発行し、Androidアプリにコードを入力します。コードは1回限りです。</p><button id="createPair" class="primary">登録コードを発行</button><div id="pairResult" class="pair-result" hidden><strong id="pairCodeText"></strong><small>このコードをAndroidアプリに入力してください。</small></div><p id="message" role="status" class="message"></p></section>
 <section class="panel"><h2>ライブ映像・音声</h2><div class="media-placeholder"><span>📷</span><strong>映像待機中</strong><small>WebRTCメディア接続は次の実装段階で追加します。</small></div><p class="hint">Android側でカメラ・マイクの使用を開始したことを確認してから接続します。</p></section>
 </main>
 <footer>端末の所有者が許可した操作のみ実行します。Androidの撮影・録音中は端末側に通知を表示します。</footer>
