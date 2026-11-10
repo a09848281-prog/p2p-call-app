@@ -63,17 +63,11 @@ public class DeviceMonitorService extends Service {
             } else if ("start_session".equals(command)) {
                 update("iPadから開始要求。通知をタップしてアプリを開き、カメラ・マイクを開始してください。", true);
             } else if ("request_status".equals(command)) {
-                update("端末はオンラインです。カメラ・マイクは " +
-                    (isMediaServiceRunningHint() ? "開始要求後にAndroid側で開始してください。" : "停止中です。"), false);
+                update("端末はオンラインです。カメラ・マイクの使用状態はAndroidの継続通知で確認してください。", false);
             }
         } catch (Exception error) {
             update("GASへの接続に失敗しました。自動で再試行します。", false);
         }
-    }
-
-    // Status is intentionally descriptive rather than claiming that capture is active.
-    private boolean isMediaServiceRunningHint() {
-        return false;
     }
 
     private void createChannel() {
