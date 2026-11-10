@@ -6,7 +6,7 @@ on:
       - 'android/**'
       - '.github/workflows/build-android.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,9 +22,22 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: gradle assembleDebug
-      - name: Upload APK
+      - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: remote-device-control-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Publish APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-${{ github.run_number }}
+          name: Android APK (build ${{ github.run_number }})
+          body: |
+            Automatically built Android APK.
+            Build: ${{ github.run_number }}
+            Commit: ${{ github.sha }}
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
