@@ -125,8 +125,15 @@ public class WebRtcSessionService extends Service {
     }
     private void notifyStatus(String text){if(Build.VERSION.SDK_INT>=26)getSystemService(NotificationManager.class).notify(42,notification(text));}
     @Override public void onDestroy(){active=false;io.shutdownNow();network.shutdownNow();
-        try{if(capturer!=null){capturer.stopCapture();capturer.dispose();}if(peer!=null)peer.close();if(videoSource!=null)videoSource.dispose();if(audioSource!=null)audioSource.dispose();if(texture!=null)texture.dispose();if(factory!=null)factory.dispose();if(egl!=null)egl.release();}catch(Exception ignored){}
-        if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();stopForeground(true);super.onDestroy();
+        if(capturer!=null){try{capturer.stopCapture();}catch(Exception ignored){}try{capturer.dispose();}catch(Exception ignored){}}
+        if(peer!=null)try{peer.close();peer.dispose();}catch(Exception ignored){}
+        if(videoSource!=null)try{videoSource.dispose();}catch(Exception ignored){}
+        if(audioSource!=null)try{audioSource.dispose();}catch(Exception ignored){}
+        if(texture!=null)try{texture.dispose();}catch(Exception ignored){}
+        if(factory!=null)try{factory.dispose();}catch(Exception ignored){}
+        if(egl!=null)try{egl.release();}catch(Exception ignored){}
+        if(wakeLock!=null&&wakeLock.isHeld())try{wakeLock.release();}catch(Exception ignored){}
+        stopForeground(true);super.onDestroy();
     }
     @Override public IBinder onBind(Intent i){return null;}
 }
