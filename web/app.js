@@ -1,7 +1,7 @@
 (()=>{"use strict";
 const $=id=>document.getElementById(id);
 const urlInput=$("gasUrl"),keyInput=$("adminKey"),apiState=$("apiState"),devices=$("devices"),message=$("message"),video=$("remoteVideo");
-const state={selected:null,pc:null,sessionId:null,pollTimer:null,statsTimer:null,connecting:false,remoteStream:null,seenTracks:new Set()};
+const state={selected:null,pc:null,sessionId:null,pollTimer:null,statsTimer:null,connecting:false,remoteStream:null,seenTracks:new Set(),lastVideoBytes:0,lastAudioBytes:0,lastFrames:0,lastStatsAt:0};
 const savedUrl=localStorage.getItem("rdc_gas_url")||window.RDC_CONFIG?.GAS_URL||"";
 const savedKey=localStorage.getItem("rdc_admin_key")||"";
 urlInput.value=savedUrl;keyInput.value=savedKey;
@@ -86,7 +86,7 @@ function endView(sendBye=true){
  if(sendBye&&oldSession&&state.selected)sendSignal("bye","",oldSession).catch(()=>{});
  stopTimers();
  if(state.pc){state.pc.ontrack=null;state.pc.close();}
- state.pc=null;state.sessionId=null;state.remoteStream=null;state.seenTracks.clear();
+ state.pc=null;state.sessionId=null;state.remoteStream=null;state.seenTracks.clear();state.lastVideoBytes=0;state.lastAudioBytes=0;state.lastFrames=0;state.lastStatsAt=0;
  video.pause();video.srcObject=null;state.connecting=false;
 }
 function updateStats(pc){
@@ -102,13 +102,16 @@ function updateStats(pc){
   const tracks=state.remoteStream?.getTracks()||[];
   const hasVideo=tracks.some(track=>track.kind==="video"&&track.readyState==="live");
   const hasAudio=tracks.some(track=>track.kind==="audio"&&track.readyState==="live");
+  const videoMoving=videoBytes>state.lastVideoBytes,audioMoving=audioBytes>state.lastAudioBytes,framesMoving=frames>state.lastFrames;
+  state.lastVideoBytes=videoBytes;state.lastAudioBytes=audioBytes;state.lastFrames=frames;state.lastStatsAt=Date.now();
   const parts=[];
-  parts.push(hasVideo?"映像トラックあり":"映像トラックなし");
-  parts.push(hasAudio?"音声トラックあり":"音声トラックなし");
-  if(videoBytes>0)parts.push("映像データ受信中");
-  if(audioBytes>0)parts.push("音声データ受信中");
-  if(frames>0)parts.push("描画フレーム "+frames);
-  if(pc.iceConnectionState==="connected"||pc.iceConnectionState==="completed")parts.push("通信接続済み");
+  parts.push("ICE: "+pc.iceConnectionState);
+  parts.push("映像: "+(hasVideo?(video.videoWidth>0?video.videoWidth+"×"+video.videoHeight:"受信・描画待ち"):"未受信"));
+  parts.push("音声: "+(hasAudio?(audioMoving?"受信中":"トラックあり"):"未受信"));
+  parts.push(videoMoving?"映像データ増加中":"映像データ停止");
+  parts.push(framesMoving?"フレーム更新中":"フレーム更新なし");
+  if(video.paused)parts.push("動画一時停止中");else if(video.readyState<2)parts.push("動画データ待機中");
+  if(pc.connectionState==="failed")parts.push("接続失敗");else if(pc.connectionState==="disconnected")parts.push("切断検出");
   setCommandStatus(parts.join(" / "));
  }).catch(()=>{});
 }
@@ -130,8 +133,11 @@ async function startView(){
    video.srcObject=state.remoteStream;
    video.muted=false;video.playsInline=true;
    event.track.onended=()=>setCommandStatus(event.track.kind==="video"?"Androidの映像が終了しました。":"Androidの音声が終了しました。");
-   video.play().then(()=>setCommandStatus("映像・音声トラックを受信しました。再生状態を確認中です。"))
-    .catch(()=>setCommandStatus("トラックは届いています。動画の再生ボタンをタップして音声・映像を開始してください。"));
+   video.play().then(()=>setCommandStatus("映像・音声トラックを受信しました。描画と音声を確認中です。"))
+    .catch(()=>setCommandStatus("トラックは届いています。下の「再生を有効化」をタップしてください。"));
+   event.track.onmute=()=>setCommandStatus(event.track.kind+"トラックが一時停止しました。");
+   event.track.onunmute=()=>setCommandStatus(event.track.kind+"トラックが再開しました。");
+   event.track.onended=()=>setCommandStatus(event.track.kind+"トラックが終了しました。");
   };
   video.onplaying=()=>{if(state.pc===pc)setCommandStatus("映像を再生中です。音声が聞こえない場合はiPadの音量と動画のミュート状態を確認してください。");};
   pc.onicecandidate=event=>{
@@ -188,6 +194,7 @@ $("createPair").addEventListener("click",async()=>{
 });
 $("closeControl").addEventListener("click",()=>{$("controlPanel").hidden=true;endView();});
 $("viewBtn").addEventListener("click",startView);
+$("enablePlayback").addEventListener("click",async()=>{try{video.muted=false;await video.play();setCommandStatus("再生を開始しました。映像サイズ "+video.videoWidth+"×"+video.videoHeight+" / readyState "+video.readyState);}catch(error){setCommandStatus("再生できません: "+error.message);}});
 $("endViewBtn").addEventListener("click",()=>endView());
 document.querySelectorAll("[data-command]").forEach(button=>button.addEventListener("click",async()=>{
  if(!state.selected)return;
