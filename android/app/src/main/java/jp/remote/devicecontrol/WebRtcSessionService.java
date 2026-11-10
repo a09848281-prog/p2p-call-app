@@ -57,7 +57,8 @@ public class WebRtcSessionService extends Service {
                 throw new SecurityException("カメラの権限が必要です");
             if(useScreen&&(projectionResultCode!=Activity.RESULT_OK||projectionData==null))
                 throw new SecurityException("画面共有の許可が確認できません");
-            if(useScreen&&(!pm.isInteractive()||((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked()))
+            KeyguardManager keyguard=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+            if(useScreen&&(!pm.isInteractive()||(keyguard!=null&&keyguard.isKeyguardLocked())))
                 throw new SecurityException("画面共有は画面点灯中・ロック解除中のみ開始できます");
             int foregroundTypes=ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
             String foregroundText;
@@ -135,7 +136,7 @@ public class WebRtcSessionService extends Service {
                 public void onSetFailure(String e){}
             },new MediaConstraints());
             io.scheduleWithFixedDelay(this::pollSignals,1,2,TimeUnit.SECONDS);
-            notifyStatus("映像・音声セッションを開始しました。画面消灯中も接続維持を試みます");
+            notifyStatus(useScreen?"画面共有を開始しました。画面消灯またはロックで自動停止します":"映像・音声セッションを開始しました。画面消灯中も接続維持を試みます");
         }catch(Exception e){notifyStatus("開始失敗: "+e.getMessage());stopSelf();}
     }
     private void registerScreenGuards(){
