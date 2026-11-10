@@ -5,7 +5,7 @@ const savedUrl=localStorage.getItem("rdc_gas_url")||window.RDC_CONFIG?.GAS_URL||
 urlInput.value=savedUrl;keyInput.value=savedKey;
 function config(){const url=urlInput.value.trim(),adminKey=keyInput.value.trim();if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url))throw Error("GAS WebアプリURLを正しく入力してください。");if(adminKey.length<24)throw Error("管理者キーは24文字以上にしてください。");return{url,adminKey};}
 async function api(action,data={}){
- const c=config(),requestId="rdc-"+Date.now()+"-"+Math.random().toString(36).slice(2),frameName=requestId.replace(/[^a-zA-Z0-9_-]/g,"");
+ const c=config(),randomBytes=new Uint8Array(16);crypto.getRandomValues(randomBytes);const requestId="rdc-"+Array.from(randomBytes,b=>b.toString(16).padStart(2,"0")).join(""),frameName=requestId.replace(/[^a-zA-Z0-9_-]/g,"");
  return new Promise((resolve,reject)=>{
   const frame=document.createElement("iframe"),form=document.createElement("form");
   frame.name=frameName;frame.title="GAS通信";frame.style.display="none";
@@ -15,7 +15,7 @@ async function api(action,data={}){
   let finished=false;
   const cleanup=()=>{window.removeEventListener("message",onMessage);clearTimeout(timer);form.remove();frame.remove();};
   const finish=(fn,value)=>{if(finished)return;finished=true;cleanup();fn(value);};
-  const onMessage=event=>{if(event.source!==frame.contentWindow||!event.data||event.data.channel!=="rdc-api"||event.data.requestId!==requestId)return;const result=event.data.response;if(!result||typeof result!=="object")return finish(reject,new Error("GASから不正な応答が返りました。"));if(!result.ok)return finish(reject,new Error(result.error||"GAS処理に失敗しました。"));finish(resolve,result);};
+  const onMessage=event=>{const data=event.data;if(!data||data.channel!=="rdc-api"||data.requestId!==requestId)return;const result=data.response;if(!result||typeof result!=="object")return finish(reject,new Error("GASから不正な応答が返りました。"));if(!result.ok)return finish(reject,new Error(result.error||"GAS処理に失敗しました。"));finish(resolve,result);};
   const timer=setTimeout(()=>finish(reject,new Error("GAS応答がタイムアウトしました。URL・公開設定・通信状態を確認してください。")),30000);
   window.addEventListener("message",onMessage);document.body.append(frame,form);form.submit();
  });
