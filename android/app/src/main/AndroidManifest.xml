@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -12,7 +13,7 @@
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
         <service android:name=".DeviceMonitorService" android:exported="false" android:foregroundServiceType="dataSync"/>
-        <service android:name=".WebRtcSessionService" android:exported="false" android:foregroundServiceType="camera|microphone"/>
+        <service android:name=".WebRtcSessionService" android:exported="false" android:foregroundServiceType="camera|microphone|mediaProjection"/>
         <receiver android:name=".StopReceiver" android:exported="false"/>
     </application>
 </manifest>
