@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
     private void stopMedia(){stopService(new Intent(this,WebRtcSessionService.class));status.setText("映像・音声セッションを停止しました。");}
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);
         if(requestCode==10){if(results.length==0||results[0]!=PackageManager.PERMISSION_GRANTED){status.setText("通知を許可してください。");return;}startMonitor();}
-        if(requestCode==PERMISSION_REQUEST){for(int result:results)if(result!=PackageManager.PERMISSION_GRANTED){status.setText("カメラ・マイク・通知の許可が必要です。");return;}startMediaService();}
+        if(requestCode==PERMISSION_REQUEST){if(results.length==0){status.setText("権限の確認が完了しませんでした。もう一度お試しください。");return;}for(int result:results)if(result!=PackageManager.PERMISSION_GRANTED){status.setText("カメラ・マイク・通知の許可が必要です。");return;}startMediaService();}
     }
     static JSONObject post(String endpoint,JSONObject body)throws Exception{HttpURLConnection c=(HttpURLConnection)new URL(endpoint).openConnection();c.setRequestMethod("POST");c.setConnectTimeout(15000);c.setReadTimeout(15000);c.setDoOutput(true);c.setRequestProperty("Content-Type","text/plain; charset=utf-8");
         try(OutputStream o=c.getOutputStream()){o.write(body.toString().getBytes("UTF-8"));}
