@@ -5,7 +5,7 @@ iPad / iPhone browser PWA + Google Apps Script + Google Sheets + Android 13 comp
 ## Current implementation
 - PWA: administrator-key login, one-time pairing codes, device list, command requests, WebRTC video/audio viewer.
 - GAS: device pairing, hashed Android tokens, heartbeat, command queue, authenticated WebRTC signaling.
-- Android: Java-only pairing, foreground monitor, WebRTC camera + microphone session, persistent notifications, and partial CPU wake locks for up to 8 hours while monitoring or streaming.
+- Android: Java-only pairing, foreground monitor, WebRTC camera + microphone session, user-approved screen sharing while the display is on and unlocked, persistent notifications, and partial CPU wake locks for up to 8 hours while monitoring or streaming.
 - GitHub Actions: Android debug APK build and GitHub Pages deployment.
 
 ## Screen-off behavior (important)
@@ -16,6 +16,14 @@ iPad / iPhone browser PWA + Google Apps Script + Google Sheets + Android 13 comp
 5. From the iPad, select the device and tap **「映像・音声に接続」**.
 
 **The iPad cannot silently start camera/microphone capture while Android is locked or in the background.** Android 13's while-in-use and foreground-service rules prohibit starting a camera/microphone foreground service solely from a remote background command. A remote start request therefore posts a notification; the monitor keeps polling for up to 8 hours while its wake lock is held, but the Android owner must unlock/open the app and explicitly start capture. Force Stop, power-off, revoked permissions, low battery shutdown and manufacturer-specific restrictions cannot be bypassed. Screen-off continuity must be verified on the actual Android model.
+
+## Screen sharing (display-on only)
+- The iPad can send a **画面共有を要求** command. Android shows a notification; the device owner must tap it, unlock the device, and approve Android's system screen-capture dialog.
+- Android's screen-capture permission is requested for every new session. It cannot be silently granted by the iPad or automatically reused.
+- Screen sharing is allowed only while the Android display is on and the device is unlocked. The app checks this before starting and continuously while sharing.
+- If the display turns off or the device becomes locked, the screen-sharing session is automatically stopped. This restriction applies to screen sharing; the existing camera/microphone session has its own behavior.
+- The Android system may offer single-app or full-display sharing. Secure or protected content may appear blank.
+- The owner can also stop screen sharing from the Android notification or the iPad control panel.
 
 ## Network limitations
 WebRTC media is sent directly between devices; GAS only carries small signaling messages. The included ICE configuration uses Google's public STUN server. Some NATs, mobile networks, corporate Wi-Fi or carrier-grade NAT require a TURN relay; in those networks, the call may fail until a TURN service is configured. This repository does not provide a TURN server or credentials.
@@ -38,4 +46,4 @@ WebRTC media is sent directly between devices; GAS only carries small signaling 
 - `android/`: Java Android app and foreground media service
 - `.github/workflows/`: APK build and Pages deployment
 
-Only use this software on devices you own or have explicit permission to manage. Camera and microphone activity must remain visible to the device owner.
+Only use this software on devices you own or have explicit permission to manage. Camera, microphone, and screen-capture activity must remain visible to and explicitly approved by the device owner.
