@@ -146,7 +146,7 @@ public class WebRtcSessionService extends Service {
                     if (state == PeerConnection.IceConnectionState.CONNECTED || state == PeerConnection.IceConnectionState.COMPLETED)
                         notifyStatus("iPadと通信接続しました。映像・音声を送信中です。");
                     else if (state == PeerConnection.IceConnectionState.FAILED)
-                        notifyStatus("通信に失敗しました。別のネットワークではTURN中継が必要な場合があります。");
+                        notifyStatus("直接P2P接続に失敗しました。STUNだけでは通らないネットワークの可能性があります。");
                     else if (state == PeerConnection.IceConnectionState.DISCONNECTED)
                         notifyStatus("通信が一時切断されました。再接続を試みています。");
                 }
@@ -235,6 +235,8 @@ public class WebRtcSessionService extends Service {
                 String username = item.optString("username", "");
                 String credential = item.optString("credential", "");
                 for (String url : urls) {
+                    String lowerUrl = url.toLowerCase(java.util.Locale.ROOT);
+                    if (!lowerUrl.startsWith("stun:") && !lowerUrl.startsWith("stuns:")) continue;
                     PeerConnection.IceServer.Builder builder = PeerConnection.IceServer.builder(url);
                     if (!username.isEmpty() && !credential.isEmpty()) {
                         builder.setUsername(username);
