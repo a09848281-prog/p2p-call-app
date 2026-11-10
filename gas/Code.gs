@@ -42,7 +42,7 @@ function claimPairCode_(sh,p){
   lock.waitLock(10000);
   try{
     const code=String(p.pairCode||"");
-    if(!/^\\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。");
+    if(!/^\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。");
     const v=sh.getDataRange().getValues();
     for(let i=1;i<v.length;i++){
       if(String(v[i][3])===code&&!v[i][4]&&v[i][6]==="pairing"&&v[i][8]&&new Date(v[i][8]).getTime()>Date.now()){
