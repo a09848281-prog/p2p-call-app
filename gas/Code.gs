@@ -16,7 +16,7 @@ function doPost(e){
 }
 function iframeResponse_(result,requestId){
   const message=JSON.stringify({channel:"rdc-api",requestId:String(requestId||""),response:result}).replace(/</g,"\\u003c");
-  const html='<!doctype html><meta charset="utf-8"><script>window.parent.postMessage('+message+',"*");</script>';
+  const html='<!doctype html><meta charset="utf-8"><script>(function(){var response='+message+';try{window.top.postMessage(response,"*");}catch(e){window.parent.postMessage(response,"*");}})();</script>';
   return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 function setup(){const ss=SpreadsheetApp.getActiveSpreadsheet();if(!ss)throw new Error("このスクリプトをGoogle Sheetsから開いてください。");let sh=ss.getSheetByName(RDC_SHEET);if(!sh)sh=ss.insertSheet(RDC_SHEET);if(sh.getLastRow()===0)sh.appendRow(["deviceId","name","tokenHash","pairCode","paired","lastSeen","status","pendingCommand","pairExpiresAt"]);if(sh.getLastColumn()<9)sh.getRange(1,9).setValue("pairExpiresAt");let sig=ss.getSheetByName(RDC_SIGNAL_SHEET);if(!sig)sig=ss.insertSheet(RDC_SIGNAL_SHEET);if(sig.getLastRow()===0)sig.appendRow(["signalId","deviceId","sessionId","fromRole","toRole","type","payload","createdAt","consumed"]);return "セットアップ完了。ADMIN_KEYをスクリプトプロパティに設定してください。";}
