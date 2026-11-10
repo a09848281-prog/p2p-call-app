@@ -121,14 +121,8 @@ async function startView(){
  state.connecting=true;
  setCommandStatus("Androidから接続情報を待っています。Android側でカメラ・マイクを開始してください。");
  try{
-  let iceServers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}];
-  try{
-   const iceConfig=await api("getIceConfig");
-   if(Array.isArray(iceConfig.iceServers)&&iceConfig.iceServers.length)iceServers=iceConfig.iceServers;
-   setCommandStatus(iceConfig.relayConfigured?"TURN中継設定を取得しました。最適な経路で接続します。":"STUNで接続します。TURN設定があればGASから自動取得します。");
-  }catch(configError){
-   setCommandStatus("ICE設定取得に失敗したためSTUNで接続します: "+configError.message);
-  }
+  // STUNは端末から直接利用。GASはシグナリングのみ、TURN中継は使用しない。
+  const iceServers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}];
   const pc=new RTCPeerConnection({iceServers,iceTransportPolicy:"all",bundlePolicy:"max-bundle",rtcpMuxPolicy:"require",iceCandidatePoolSize:4});
   state.pc=pc;state.remoteStream=new MediaStream();
   let answerSent=false;const queuedIce=[];
@@ -153,7 +147,7 @@ async function startView(){
   };
   pc.onconnectionstatechange=()=>{
    if(state.pc!==pc)return;
-   if(pc.connectionState==="failed")setCommandStatus("WebRTC接続失敗。Android側の配信状態とTURN設定を確認し、再接続してください。");
+   if(pc.connectionState==="failed")setCommandStatus("WebRTC接続失敗。STUNだけでは直接P2Pできないネットワークの可能性があります。");
    else if(pc.connectionState==="disconnected")setCommandStatus("通信が切断されました。回線復帰後に再接続してください。");
    else if(pc.connectionState==="connected")setCommandStatus("WebRTC通信接続済み。映像・音声データを確認しています。");
   };
@@ -161,7 +155,7 @@ async function startView(){
   video.onstalled=()=>{if(state.pc===pc)setCommandStatus("映像の受信が停止しました。Android側のカメラと通信状態を確認してください。");};
   video.onplaying=()=>{if(state.pc===pc)setCommandStatus("映像を再生中です。音声が聞こえない場合は音量と再生設定を確認してください。");};
   video.onerror=()=>{if(state.pc===pc)setCommandStatus("動画再生エラー: "+(video.error?video.error.message:"詳細不明"));};
-  pc.oniceconnectionstatechange=()=>{if(state.pc===pc&&pc.iceConnectionState==="failed")setCommandStatus("ICE接続失敗。STUNだけでは接続できないネットワークの可能性があります。");};
+  pc.oniceconnectionstatechange=()=>{if(state.pc===pc&&pc.iceConnectionState==="failed")setCommandStatus("ICE接続失敗。STUNだけでは直接P2Pできないネットワークの可能性があります。");};
   const deadline=Date.now()+90000;
   while(Date.now()<deadline&&state.pc===pc&&!state.sessionId){
    const response=await api("pollSignals",{role:"web",deviceId:state.selected.deviceId});
