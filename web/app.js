@@ -127,7 +127,10 @@ async function startView(){
   state.pc=pc;state.remoteStream=new MediaStream();
   let answerSent=false;const queuedIce=[];
   pc.ontrack=event=>{
-   if(!state.remoteStream.getTracks().some(track=>track.id===event.track.id))state.remoteStream.addTrack(event.track);
+   const incomingStream=event.streams&&event.streams[0];
+   if(incomingStream)state.remoteStream=incomingStream;
+   else if(!state.remoteStream.getTracks().some(track=>track.id===event.track.id))state.remoteStream.addTrack(event.track);
+   event.track.enabled=true;
    state.seenTracks.add(event.track.kind);
    video.srcObject=state.remoteStream;
    video.muted=false;video.playsInline=true;
