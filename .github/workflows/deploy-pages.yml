@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'remote-device-control/web/**'
-      - '.github/workflows/deploy-remote-device-control.yml'
+      - 'web/**'
+      - '.github/workflows/deploy-pages.yml'
 permissions:
   contents: read
   pages: write
@@ -23,6 +23,6 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: remote-device-control/web
+          path: web
       - id: deployment
         uses: actions/deploy-pages@v4

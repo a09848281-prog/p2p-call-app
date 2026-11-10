@@ -1,9 +1,0 @@
-{
-  "name": "Remote Device Control",
-  "short_name": "RDC",
-  "lang": "ja",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#101827",
-  "theme_color": "#101827"
-}

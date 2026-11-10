@@ -1,48 +1,31 @@
-# P2P 通話アプリ
+# Remote Device Control
 
-ブラウザだけで音声・ビデオ通話を行うシンプルな P2P 通話アプリです。日本語 UI、スマートフォン対応。
+iPad PWA + Google Apps Script + Google Sheets + Android 13 companion APK (Java only).
 
-## 機能
+## Current implementation
+- iPad PWA: GAS URL setup, one-time pairing code generation, registered-device list and status.
+- GAS: one-time pairing codes (10-minute expiry), token-hash authentication for Android heartbeat and command polling.
+- Android APK: Java-only pairing UI and persistent foreground connection-monitor service.
+- GitHub Actions: build a debug APK and deploy the PWA to GitHub Pages.
 
-- ルーム作成・ルーム ID で参加
-- 音声・ビデオ通話（カメラを許可できない場合は音声のみで開始を試行）
-- マイク／カメラのオン・オフ
-- ルーム ID の自動生成とコピー
-- 接続状態・イベントログの表示
-- レスポンシブレイアウト
+## Important status
+This is a working foundation, **not yet a finished remote camera/microphone streaming product**. WebRTC signaling and media rendering are not implemented in this version. The current remote start command only produces a notification on Android; it does not secretly activate the camera or microphone.
 
-## 起動方法
+Android 13 prevents an ordinary background command from silently starting camera/microphone capture. The device owner must open the Android app, grant camera/microphone permissions and explicitly start a visible foreground capture session. While an already-started, permitted session remains alive, screen-off behavior can be tested on the actual device. Force Stop, power-off, permission revocation and manufacturer battery restrictions cannot be bypassed.
 
-1. このリポジトリを GitHub Pages などの HTTPS 対応ホスティングに公開します。
-2. 公開 URL を Safari / Chrome で開きます。
-3. 片方の端末で「ルームを作成」を押し、表示されたルーム ID を相手に共有します。
-4. 相手は同じ URL を開き、同じルーム ID を入力して「ルームに参加」を押します。
-5. ブラウザが表示するマイク・カメラの許可を確認します。
+## Setup
+1. Create a Google Sheet and open Extensions → Apps Script.
+2. Paste `gas/Code.gs`, save, and run `setup()` once.
+3. Deploy Apps Script as a Web app and copy its /exec URL.
+4. Open `web/config.js` and set `GAS_URL` to that URL. Commit the change (for personal use, avoid exposing any private admin credentials).
+5. In GitHub repository Settings → Pages, select GitHub Actions as the deployment source.
+6. Run the **Build Android APK** workflow. Download the debug APK from its workflow artifact.
+7. Install the APK on the Android device, enter the same GAS URL and the one-time code displayed by the iPad PWA, then start connection monitoring.
 
-ローカルで試す場合は、ブラウザがメディアアクセスを許可する `localhost` 上の開発サーバーを使ってください。HTML ファイルを直接開く方法（file://）ではマイク・カメラが利用できない場合があります。
+## Project layout
+- `web/`: iPad PWA
+- `gas/Code.gs`: Google Apps Script API
+- `android/`: Android Java project
+- `.github/workflows/`: build and deploy automation
 
-## 技術構成
-
-- HTML / CSS / JavaScript
-- WebRTC による音声・映像通信
-- PeerJS による接続仲介（シグナリング）
-- 公開 PeerJS クラウドをシグナリングに使用
-
-## 重要な制限・注意
-
-- 「P2P」は音声・映像が原則として端末間で直接流れることを意味します。接続先の発見や接続情報の交換にはシグナリングサービスを使用します。
-- ネットワークや NAT / ファイアウォールによっては直接接続できないことがあります。TURN リレーを設定していないため、すべてのネットワークで接続できる保証はありません。
-- 公開シグナリングサービスの可用性・利用条件に依存します。サービス仕様の変更で動作しなくなる可能性があります。
-- ルーム ID は参加者に共有するためのもので、認証やアクセス制御の代わりにはなりません。機密性の高い会話や不特定多数向けの公開ルームには使用しないでください。
-- 本番運用では、独自シグナリングサーバー、TURN サーバー、接続認証、レート制限、依存ライブラリの固定・監査を検討してください。
-- 初回読み込みにはインターネット接続が必要です（PeerJS ライブラリを CDN から読み込みます）。
-
-## ファイル
-
-- `index.html` — 画面構造
-- `style.css` — スタイルとレスポンシブ UI
-- `script.js` — 通話・接続処理
-
-## ライセンス
-
-現時点ではライセンス未指定です。公開・再利用条件を明確にしたい場合は、LICENSE ファイルを追加してください。
+Only use this on devices you own or have explicit permission to manage.
