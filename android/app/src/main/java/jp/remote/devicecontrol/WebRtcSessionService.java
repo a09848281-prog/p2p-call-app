@@ -17,7 +17,8 @@ public class WebRtcSessionService extends Service {
     private final ScheduledExecutorService io=Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService network=Executors.newSingleThreadExecutor();
     private final List<IceCandidate> pendingIce=Collections.synchronizedList(new ArrayList<>());
-    private volatile boolean offerQueued=false,active=false;
+    private final List<IceCandidate> pendingRemoteIce=Collections.synchronizedList(new ArrayList<>());
+    private volatile boolean offerQueued=false,remoteDescriptionSet=false,active=false;
     private EglBase egl;
     private PeerConnectionFactory factory;
     private PeerConnection peer;
@@ -108,8 +109,8 @@ public class WebRtcSessionService extends Service {
     private void sendSignal(String type,String payload){network.execute(()->{try{SharedPreferences p=getSharedPreferences("rdc",MODE_PRIVATE);JSONObject j=auth(p);j.put("action","sendSignal");j.put("fromRole","android");j.put("type",type);j.put("sessionId",sessionId);j.put("payload",payload);MainActivity.post(p.getString("gasUrl",""),j);}catch(Exception e){notifyStatus("シグナル送信失敗: "+e.getMessage());}});}
     private void pollSignals(){try{SharedPreferences p=getSharedPreferences("rdc",MODE_PRIVATE);JSONObject j=auth(p);j.put("action","pollSignals");j.put("role","android");j.put("sessionId",sessionId);JSONObject r=MainActivity.post(p.getString("gasUrl",""),j);org.json.JSONArray a=r.optJSONArray("signals");if(a==null)return;
         for(int i=0;i<a.length();i++){JSONObject s=a.getJSONObject(i);String type=s.optString("type"),payload=s.optString("payload");
-            if("answer".equals(type)&&peer!=null){peer.setRemoteDescription(new SdpObserver(){public void onSetSuccess(){notifyStatus("iPadと接続しました");}public void onSetFailure(String e){notifyStatus("Answer設定失敗: "+e);}public void onCreateSuccess(SessionDescription d){}public void onCreateFailure(String e){}},new SessionDescription(SessionDescription.Type.ANSWER,payload));}
-            else if("ice".equals(type)&&peer!=null){JSONObject c=new JSONObject(payload);peer.addIceCandidate(new IceCandidate(c.optString("sdpMid"),c.optInt("sdpMLineIndex"),c.optString("candidate")));}
+            if("answer".equals(type)&&peer!=null){peer.setRemoteDescription(new SdpObserver(){public void onSetSuccess(){remoteDescriptionSet=true;synchronized(pendingRemoteIce){for(IceCandidate candidate:pendingRemoteIce)peer.addIceCandidate(candidate);pendingRemoteIce.clear();}notifyStatus("iPadと接続しました");}public void onSetFailure(String e){notifyStatus("Answer設定失敗: "+e);}public void onCreateSuccess(SessionDescription d){}public void onCreateFailure(String e){}},new SessionDescription(SessionDescription.Type.ANSWER,payload));}
+            else if("ice".equals(type)&&peer!=null){JSONObject c=new JSONObject(payload);IceCandidate candidate=new IceCandidate(c.optString("sdpMid"),c.optInt("sdpMLineIndex"),c.optString("candidate"));if(remoteDescriptionSet)peer.addIceCandidate(candidate);else pendingRemoteIce.add(candidate);}
             else if("bye".equals(type)){stopSelf();return;}
         }
     }catch(Exception e){notifyStatus("接続処理を再試行中");}}
