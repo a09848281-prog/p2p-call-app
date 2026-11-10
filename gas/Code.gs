@@ -72,7 +72,7 @@ function claimPairCode_(sh,p){
     if(attempts>=20)throw new Error("登録コードの試行回数が上限に達しました。5分ほど待ってから再試行してください。");
     props.setProperties({RDC_PAIR_WINDOW_START:String(windowStart),RDC_PAIR_ATTEMPT_COUNT:String(attempts+1)});
     const code=String(p.pairCode||"");
-    if(!/^\\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。");
+    if(!/^\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。");
     const rows=sh.getDataRange().getValues();
     for(let i=1;i<rows.length;i++){
       if(String(rows[i][3])===code&&!rows[i][4]&&rows[i][6]==="pairing"&&rows[i][8]&&new Date(rows[i][8]).getTime()>Date.now()){
