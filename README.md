@@ -20,7 +20,7 @@ Android 13 prevents an ordinary background command from silently starting camera
 5. Open `web/` through the deployed GitHub Pages site, then enter the GAS URL and ADMIN_KEY in the settings.
 6. In GitHub repository Settings → Pages, select GitHub Actions as the deployment source.
 7. Run the **Build Android APK** workflow. Download the debug APK from its workflow artifact.
-7. Install the APK on the Android device, enter the same GAS URL and the one-time code displayed by the iPad PWA, then start connection monitoring.
+8. Install the APK on the Android device, enter the same GAS URL and the one-time code displayed by the iPad PWA, then start connection monitoring.
 
 ## Project layout
 - `web/`: iPad PWA
