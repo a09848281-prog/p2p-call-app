@@ -52,6 +52,18 @@ public class DeviceMonitorService extends Service {
             heartbeat.put("action", "heartbeat");
             MainActivity.post(url, heartbeat);
 
+            long iceFetchedAt = prefs.getLong("iceConfigFetchedAt", 0L);
+            if (System.currentTimeMillis() - iceFetchedAt > 15L * 60L * 1000L) {
+                JSONObject iceRequest = new JSONObject(auth.toString());
+                iceRequest.put("action", "getIceConfig");
+                iceRequest.put("role", "android");
+                JSONObject iceConfig = MainActivity.post(url, iceRequest);
+                prefs.edit()
+                    .putString("iceServers", iceConfig.optJSONArray("iceServers") == null ? "" : iceConfig.optJSONArray("iceServers").toString())
+                    .putLong("iceConfigFetchedAt", System.currentTimeMillis())
+                    .apply();
+            }
+
             JSONObject poll = new JSONObject(auth.toString());
             poll.put("action", "pollCommand");
             JSONObject response = MainActivity.post(url, poll);
