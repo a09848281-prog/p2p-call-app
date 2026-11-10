@@ -24,6 +24,7 @@ jobs:
       - name: Check JavaScript, Apps Script and manifest syntax
         run: |
           node --check web/app.js
+          node --check web/sw.js
           node --check < gas/Code.gs
           python -m json.tool web/manifest.webmanifest > /dev/null
       - uses: actions/configure-pages@v5
