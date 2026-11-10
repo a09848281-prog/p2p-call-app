@@ -17,6 +17,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 import org.webrtc.*;
 
 import java.util.Collections;
@@ -110,13 +111,9 @@ public class WebRtcSessionService extends Service {
                 .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()))
                 .createPeerConnectionFactory();
 
-            PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(
-                Arrays.asList(
-                    PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-                    PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
-                )
-            );
+            PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(buildIceServers(prefs));
             configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
+            configuration.iceCandidatePoolSize = 4;
 
             peer = factory.createPeerConnection(configuration, new PeerConnection.Observer() {
                 @Override public void onSignalingChange(PeerConnection.SignalingState state) {}
@@ -192,6 +189,45 @@ public class WebRtcSessionService extends Service {
         }
     }
 
+    private List<PeerConnection.IceServer> buildIceServers(SharedPreferences prefs) {
+        ArrayList<PeerConnection.IceServer> servers = new ArrayList<>();
+        String stored = prefs.getString("iceServers", "");
+        try {
+            JSONArray configured = new JSONArray(stored);
+            for (int i = 0; i < configured.length(); i++) {
+                JSONObject item = configured.getJSONObject(i);
+                Object urlsValue = item.opt("urls");
+                ArrayList<String> urls = new ArrayList<>();
+                if (urlsValue instanceof JSONArray) {
+                    JSONArray urlArray = (JSONArray) urlsValue;
+                    for (int j = 0; j < urlArray.length(); j++) {
+                        String url = urlArray.optString(j, "");
+                        if (!url.isEmpty()) urls.add(url);
+                    }
+                } else if (urlsValue instanceof String && !((String) urlsValue).isEmpty()) {
+                    urls.add((String) urlsValue);
+                }
+                String username = item.optString("username", "");
+                String credential = item.optString("credential", "");
+                for (String url : urls) {
+                    PeerConnection.IceServer.Builder builder = PeerConnection.IceServer.builder(url);
+                    if (!username.isEmpty() && !credential.isEmpty()) {
+                        builder.setUsername(username);
+                        builder.setPassword(credential);
+                    }
+                    servers.add(builder.createIceServer());
+                }
+            }
+        } catch (Exception error) {
+            notifyStatus("ICE設定を読み込めません。STUN設定で接続します。");
+        }
+        if (servers.isEmpty()) {
+            servers.add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer());
+            servers.add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer());
+        }
+        return servers;
+    }
+
     private VideoCapturer createCameraCapturer() {
         Camera2Enumerator enumerator = new Camera2Enumerator(this);
         String[] names = enumerator.getDeviceNames();
@@ -224,7 +260,7 @@ public class WebRtcSessionService extends Service {
 
     private void sendSignal(String type, String payload) {
         if (network.isShutdown()) return;
-        network.execute(() -> {
+        try { network.execute(() -> {
             try {
                 SharedPreferences prefs = getSharedPreferences("rdc", MODE_PRIVATE);
                 JSONObject json = auth(prefs);
@@ -237,7 +273,7 @@ public class WebRtcSessionService extends Service {
             } catch (Exception error) {
                 notifyStatus("GASへの通信に失敗しました。ネットワークを確認してください。");
             }
-        });
+        }); } catch (java.util.concurrent.RejectedExecutionException ignored) {}
     }
 
     private void pollSignals() {
