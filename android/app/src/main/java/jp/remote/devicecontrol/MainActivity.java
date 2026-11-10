@@ -38,7 +38,8 @@ public class MainActivity extends Activity {
         Button media=new Button(this);media.setText("📷 この端末のカメラ・マイクを開始");root.addView(media);
         Button screen=new Button(this);screen.setText("🖥️ この端末の画面を共有（画面点灯中のみ）");root.addView(screen);
         Button stopMedia=new Button(this);stopMedia.setText("映像・音声セッションを停止");root.addView(stopMedia);
-        status=new TextView(this);status.setText(prefs.contains("deviceToken")?"登録済み端末":"未登録");root.addView(status);setContentView(root);
+        status=new TextView(this);status.setText(prefs.contains("deviceToken")?"登録済み端末":"未登録");root.addView(status);
+        android.widget.ScrollView scroll=new android.widget.ScrollView(this);scroll.setFillViewport(true);scroll.addView(root);setContentView(scroll);
         pair.setOnClickListener(v->pairDevice());start.setOnClickListener(v->startMonitor());media.setOnClickListener(v->requestMediaPermissions());screen.setOnClickListener(v->requestScreenCapture());stopMedia.setOnClickListener(v->stopMedia());
         if(ACTION_REQUEST_SCREEN.equals(getIntent().getAction()))root.post(this::requestScreenCapture);
     }
