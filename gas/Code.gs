@@ -41,8 +41,15 @@ function claimPairCode_(sh,p){
   const lock=LockService.getScriptLock();
   lock.waitLock(10000);
   try{
+    const props=PropertiesService.getScriptProperties();
+    const now=Date.now();
+    let windowStart=Number(props.getProperty("RDC_PAIR_WINDOW_START")||0);
+    let attempts=Number(props.getProperty("RDC_PAIR_ATTEMPT_COUNT")||0);
+    if(!windowStart||now-windowStart>=5*60*1000){windowStart=now;attempts=0;}
+    if(attempts>=20)throw new Error("登録コードの試行回数が上限に達しました。5分ほど待ってから再試行してください。");
+    props.setProperties({RDC_PAIR_WINDOW_START:String(windowStart),RDC_PAIR_ATTEMPT_COUNT:String(attempts+1)});
     const code=String(p.pairCode||"");
-    if(!/^\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。");
+    if(!/^\d{6}$/.test(code))throw new Error("登録コードは6桁で入力してください。")
     const v=sh.getDataRange().getValues();
     for(let i=1;i<v.length;i++){
       if(String(v[i][3])===code&&!v[i][4]&&v[i][6]==="pairing"&&v[i][8]&&new Date(v[i][8]).getTime()>Date.now()){
@@ -59,8 +66,27 @@ function claimPairCode_(sh,p){
 }
 function list_(sh){const v=sh.getDataRange().getValues(),now=Date.now(),out=[];for(let i=1;i<v.length;i++){if(!v[i][4])continue;const seen=v[i][5]?new Date(v[i][5]).getTime():0;out.push({deviceId:String(v[i][0]),name:String(v[i][1]),online:!!seen&&now-seen<90000,lastSeen:v[i][5]?new Date(v[i][5]).toLocaleString("ja-JP"):"未接続"});}return {ok:true,devices:out};}
 function heartbeat_(sh,p){const row=authRow_(sh,p);sh.getRange(row,6).setValue(new Date());sh.getRange(row,7).setValue("online");return {ok:true};}
-function poll_(sh,p){const row=authRow_(sh,p),cmd=sh.getRange(row,8).getValue();if(cmd)sh.getRange(row,8).clearContent();return {ok:true,command:cmd||null};}
-function queue_(sh,p){const id=String(p.deviceId||"");const command=String(p.command||"");const allowed=["start_session","stop_session","start_screen","stop_screen","request_status"];if(!allowed.includes(command))throw new Error("許可されていない操作です。");const v=sh.getDataRange().getValues();for(let i=1;i<v.length;i++)if(String(v[i][0])===id&&v[i][4]){sh.getRange(i+1,8).setValue(command);return {ok:true};}throw new Error("端末が見つかりません。");}
+function poll_(sh,p){
+  const row=authRow_(sh,p),lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{const cmd=sh.getRange(row,8).getValue();if(cmd)sh.getRange(row,8).clearContent();return {ok:true,command:cmd||null};}
+  finally{lock.releaseLock();}
+}
+function queue_(sh,p){
+  const id=String(p.deviceId||""),command=String(p.command||"");
+  const allowed=["start_session","stop_session","start_screen","stop_screen","request_status"];
+  if(!allowed.includes(command))throw new Error("許可されていない操作です。");
+  const lock=LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{
+    const v=sh.getDataRange().getValues();
+    for(let i=1;i<v.length;i++)if(String(v[i][0])===id&&v[i][4]){
+      sh.getRange(i+1,8).setValue(command);
+      return {ok:true};
+    }
+    throw new Error("端末が見つかりません。");
+  }finally{lock.releaseLock();}
+}
 function sendSignal_(p){const role=String(p.fromRole||"");if(role==="android")authRow_(sheet_(),p);else if(role==="web")requireAdmin_(p);else throw new Error("送信元が不正です。");const to=role==="android"?"web":"android";const type=String(p.type||"");if(!["offer","answer","ice","bye"].includes(type))throw new Error("シグナル種別が不正です。");const payload=String(p.payload||"");if(payload.length>30000)throw new Error("シグナルが大きすぎます。");const sig=signalSheet_(),lock=LockService.getScriptLock();lock.waitLock(10000);try{if(type==="offer"){const rows=sig.getDataRange().getValues();for(let i=1;i<rows.length;i++)if(String(rows[i][1])===String(p.deviceId)&&!rows[i][8])sig.getRange(i+1,9).setValue(true);}sig.appendRow([Utilities.getUuid(),String(p.deviceId||""),String(p.sessionId||""),role,to,type,payload,new Date(),false]);return {ok:true};}finally{lock.releaseLock();}}
 function pollSignals_(p){const role=String(p.role||"");if(role==="android")authRow_(sheet_(),p);else if(role==="web")requireAdmin_(p);else throw new Error("受信側が不正です。");const sig=signalSheet_(),lock=LockService.getScriptLock();lock.waitLock(10000);try{const v=sig.getDataRange().getValues(),out=[];for(let i=1;i<v.length;i++){if(String(v[i][1])===String(p.deviceId)&&String(v[i][4])===role&&!v[i][8]&&(!p.sessionId||String(v[i][2])===String(p.sessionId))){out.push({sessionId:String(v[i][2]),type:String(v[i][5]),payload:String(v[i][6])});sig.getRange(i+1,9).setValue(true);if(out.length>=30)break;}}return {ok:true,signals:out};}finally{lock.releaseLock();}}
 function authRow_(sh,p){const id=String(p.deviceId||""),hash=sha_(String(p.deviceToken||""));const v=sh.getDataRange().getValues();for(let i=1;i<v.length;i++)if(String(v[i][0])===id&&v[i][4]&&String(v[i][2])===hash)return i+1;throw new Error("端末認証に失敗しました。");}
