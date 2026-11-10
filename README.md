@@ -18,12 +18,12 @@ iPad / iPhone browser PWA + Google Apps Script + Google Sheets + Android 13 comp
 **The iPad cannot silently start camera/microphone capture while Android is locked or in the background.** Android 13's while-in-use and foreground-service rules prohibit starting a camera/microphone foreground service solely from a remote background command. A remote start request therefore posts a notification; the monitor keeps polling for up to 8 hours while its wake lock is held, but the Android owner must unlock/open the app and explicitly start capture. Force Stop, power-off, revoked permissions, low battery shutdown and manufacturer-specific restrictions cannot be bypassed. Screen-off continuity must be verified on the actual Android model.
 
 ## Screen sharing (display-on only)
-- The iPad can send a **画面共有を要求** command. Android shows a notification; the device owner must tap it, unlock the device, and approve Android's system screen-capture dialog.
+- Screen sharing can be started from the Android app's **「この端末の画面を共有」** button or requested from the iPad using **「画面共有を要求」**. For an iPad request, Android shows a notification; the device owner must tap it, unlock the device, and approve Android's system screen-capture dialog.
 - Android's screen-capture permission is requested for every new session. It cannot be silently granted by the iPad or automatically reused.
 - Screen sharing is allowed only while the Android display is on and the device is unlocked. The app checks this before starting and continuously while sharing.
 - If the display turns off or the device becomes locked, the screen-sharing session is automatically stopped. This restriction applies to screen sharing; the existing camera/microphone session has its own behavior.
 - The Android system may offer single-app or full-display sharing. Secure or protected content may appear blank.
-- The owner can also stop screen sharing from the Android notification or the iPad control panel.
+- Starting screen sharing replaces an existing camera/microphone session. The owner can stop screen sharing from the Android notification or the iPad control panel.
 
 ## Network limitations
 WebRTC media is sent directly between devices; GAS only carries small signaling messages. The included ICE configuration uses Google's public STUN server. Some NATs, mobile networks, corporate Wi-Fi or carrier-grade NAT require a TURN relay; in those networks, the call may fail until a TURN service is configured. This repository does not provide a TURN server or credentials.
