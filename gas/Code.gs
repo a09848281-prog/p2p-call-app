@@ -55,16 +55,17 @@ function getIceConfig_(identity){
   if(stunUrls.length)servers.push({urls:stunUrls});
   const turnUrls=String(props.getProperty("TURN_URLS")||"").split(",").map(v=>v.trim()).filter(v=>/^turns?:/i.test(v));
   const sharedSecret=String(props.getProperty("TURN_SHARED_SECRET")||"");
-  let relayConfigured=false;
+  let relayConfigured=false,ttlValue=0;
   if(turnUrls.length&&sharedSecret){
     const ttl=Math.max(300,Math.min(86400,Number(props.getProperty("TURN_CREDENTIAL_TTL_SECONDS")||3600)));
+    ttlValue=ttl;
     const expires=Math.floor(Date.now()/1000)+ttl;
     const username=String(expires)+":"+String(identity||"device");
     const signature=Utilities.computeHmacSha1Signature(username,sharedSecret);
     servers.push({urls:turnUrls,username:username,credential:Utilities.base64Encode(signature)});
     relayConfigured=true;
   }
-  return {ok:true,iceServers:servers,relayConfigured:relayConfigured,credentialTtlSeconds:relayConfigured?ttl:null};
+  return {ok:true,iceServers:servers,relayConfigured:relayConfigured,credentialTtlSeconds:relayConfigured?ttlValue:null};
 }
 function requireAdmin_(p){
   const key=PropertiesService.getScriptProperties().getProperty("ADMIN_KEY");
