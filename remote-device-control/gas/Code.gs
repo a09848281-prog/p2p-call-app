@@ -1,0 +1,14 @@
+const RDC_SHEET = "Devices";
+function doGet(){return json_({ok:true,service:"Remote Device Control GAS",version:1});}
+function doPost(e){try{const p=JSON.parse(e?.postData?.contents||"{}");const result=route_(p);return json_(result);}catch(err){return json_({ok:false,error:String(err.message||err)});}}
+function setup(){const ss=SpreadsheetApp.getActiveSpreadsheet();if(!ss)throw new Error("このスクリプトをGoogle Sheetsから開いてください。");let sh=ss.getSheetByName(RDC_SHEET);if(!sh)sh=ss.insertSheet(RDC_SHEET);if(sh.getLastRow()===0)sh.appendRow(["deviceId","name","tokenHash","pairCode","paired","lastSeen","status","pendingCommand"]);return "セットアップ完了";}
+function route_(p){const sh=sheet_();switch(p.action){case "pairDevice":return pair_(sh,p);case "listDevices":return list_(sh);case "heartbeat":return heartbeat_(sh,p);case "pollCommand":return poll_(sh,p);case "ackCommand":return ack_(sh,p);default:throw new Error("未対応の操作です。");}}
+function pair_(sh,p){const code=String(p.pairCode||"");const values=sh.getDataRange().getValues();for(let i=1;i<values.length;i++){if(String(values[i][3])===code&&!values[i][4]){const token=Utilities.getUuid()+Utilities.getUuid();const id=String(values[i][0]);sh.getRange(i+1,2).setValue(String(p.name||"Android").slice(0,40));sh.getRange(i+1,3).setValue(sha_(token));sh.getRange(i+1,4,1,2).setValues([["",true]]);return {ok:true,device:{deviceId:id,name:String(p.name||"Android")},deviceToken:token};}}throw new Error("ペアリングコードが無効か、使用済みです。");}
+function list_(sh){const v=sh.getDataRange().getValues(),now=Date.now(),out=[];for(let i=1;i<v.length;i++){if(!v[i][4])continue;const seen=v[i][5]?new Date(v[i][5]).getTime():0;out.push({deviceId:String(v[i][0]),name:String(v[i][1]),online:!!seen&&now-seen<90000,lastSeen:v[i][5]?new Date(v[i][5]).toLocaleString("ja-JP"):"未接続"});}return {ok:true,devices:out};}
+function heartbeat_(sh,p){const row=authRow_(sh,p);sh.getRange(row,6).setValue(new Date());sh.getRange(row,7).setValue("online");return {ok:true};}
+function poll_(sh,p){const row=authRow_(sh,p),cmd=sh.getRange(row,8).getValue();if(cmd)sh.getRange(row,8).clearContent();return {ok:true,command:cmd||null};}
+function ack_(sh,p){authRow_(sh,p);return {ok:true};}
+function authRow_(sh,p){const id=String(p.deviceId||""),hash=sha_(String(p.deviceToken||""));const v=sh.getDataRange().getValues();for(let i=1;i<v.length;i++)if(String(v[i][0])===id&&v[i][4]&&String(v[i][2])===hash)return i+1;throw new Error("端末認証に失敗しました。");}
+function sheet_(){const ss=SpreadsheetApp.getActiveSpreadsheet();if(!ss)throw new Error("スプレッドシートに紐付けてください。");let sh=ss.getSheetByName(RDC_SHEET);if(!sh)throw new Error("先にsetup()を実行してください。");return sh;}
+function sha_(s){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s).map(b=>(b<0?b+256:b).toString(16).padStart(2,"0")).join("");}
+function json_(v){return ContentService.createTextOutput(JSON.stringify(v)).setMimeType(ContentService.MimeType.JSON);}
