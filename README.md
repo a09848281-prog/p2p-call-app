@@ -5,7 +5,7 @@ iPad / iPhone browser PWA + Google Apps Script + Google Sheets + Android 13 comp
 ## Current implementation
 - PWA: administrator-key login, one-time pairing codes, device list, command requests, WebRTC video/audio viewer.
 - GAS: device pairing, hashed Android tokens, heartbeat, command queue, authenticated WebRTC signaling.
-- Android: Java-only pairing, foreground monitor, WebRTC camera + microphone session, persistent notification, and a partial CPU wake lock during an active media session.
+- Android: Java-only pairing, foreground monitor, WebRTC camera + microphone session, persistent notifications, and partial CPU wake locks for up to 8 hours while monitoring or streaming.
 - GitHub Actions: Android debug APK build and GitHub Pages deployment.
 
 ## Screen-off behavior (important)
@@ -15,7 +15,7 @@ iPad / iPhone browser PWA + Google Apps Script + Google Sheets + Android 13 comp
 4. After the session has started, the screen can be turned off; the service keeps the camera/microphone session alive as Android and the device manufacturer permit. A partial wake lock is held for up to 8 hours to reduce CPU sleep interruptions.
 5. From the iPad, select the device and tap **「映像・音声に接続」**.
 
-**The iPad cannot silently start camera/microphone capture while Android is locked or in the background.** Android 13's while-in-use and foreground-service rules prohibit starting a camera/microphone foreground service solely from a remote background command. A remote start request therefore posts a notification; the Android owner must unlock/open the app and explicitly start capture. Force Stop, power-off, revoked permissions, low battery shutdown and manufacturer-specific restrictions cannot be bypassed. Screen-off continuity must be verified on the actual Android model.
+**The iPad cannot silently start camera/microphone capture while Android is locked or in the background.** Android 13's while-in-use and foreground-service rules prohibit starting a camera/microphone foreground service solely from a remote background command. A remote start request therefore posts a notification; the monitor keeps polling for up to 8 hours while its wake lock is held, but the Android owner must unlock/open the app and explicitly start capture. Force Stop, power-off, revoked permissions, low battery shutdown and manufacturer-specific restrictions cannot be bypassed. Screen-off continuity must be verified on the actual Android model.
 
 ## Network limitations
 WebRTC media is sent directly between devices; GAS only carries small signaling messages. The included ICE configuration uses Google's public STUN server. Some NATs, mobile networks, corporate Wi-Fi or carrier-grade NAT require a TURN relay; in those networks, the call may fail until a TURN service is configured. This repository does not provide a TURN server or credentials.
