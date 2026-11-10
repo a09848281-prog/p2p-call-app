@@ -74,7 +74,10 @@ public class MainActivity extends Activity {
         root.addView(stop);
 
         status = new TextView(this);
-        status.setText(prefs.contains("deviceToken") ? "登録済み端末" : "未登録");
+        String lastError = prefs.getString("lastMediaError", "");
+        status.setText(!lastError.isEmpty()
+            ? "前回のカメラ・マイク起動エラー: " + lastError
+            : (prefs.contains("deviceToken") ? "登録済み端末" : "未登録"));
         root.addView(status);
 
         TextView note = new TextView(this);
@@ -198,7 +201,7 @@ public class MainActivity extends Activity {
             intent.setAction(WebRtcSessionService.ACTION_START);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
             else startService(intent);
-            status.setText("カメラ・マイクを開始しました。通知が表示されます。画面ロック後も継続します。");
+            status.setText("カメラ・マイクの起動処理を開始しました。通知で準備状況を確認してください。");
         } catch (Exception e) {
             status.setText("開始できません: " + e.getMessage());
         }
