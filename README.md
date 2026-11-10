@@ -16,10 +16,10 @@ Android 13 prevents an ordinary background command from silently starting camera
 ## Setup
 1. Create a Google Sheet and open Extensions → Apps Script.
 2. Paste `gas/Code.gs`, save, and run `setup()` once.
-3. Deploy Apps Script as a Web app and copy its /exec URL.
-4. Open `web/config.js` and set `GAS_URL` to that URL. Commit the change (for personal use, avoid exposing any private admin credentials).
-5. In GitHub repository Settings → Pages, select GitHub Actions as the deployment source.
-6. Run the **Build Android APK** workflow. Download the debug APK from its workflow artifact.
+3. In Apps Script → Project Settings → Script properties, add ADMIN_KEY with a random secret (at least 24 characters). Do not put this key in GitHub.\n4. Deploy Apps Script as a Web app and copy its /exec URL.
+5. Open `web/` through the deployed GitHub Pages site, then enter the GAS URL and ADMIN_KEY in the settings.
+6. In GitHub repository Settings → Pages, select GitHub Actions as the deployment source.
+7. Run the **Build Android APK** workflow. Download the debug APK from its workflow artifact.
 7. Install the APK on the Android device, enter the same GAS URL and the one-time code displayed by the iPad PWA, then start connection monitoring.
 
 ## Project layout
