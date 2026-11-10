@@ -115,29 +115,41 @@ function queue_(sh,p){
   }finally{lock.releaseLock();}
 }
 function sendSignal_(p){
-  const role=String(p.fromRole||"");
+  const role=String(p.fromRole||""),deviceId=String(p.deviceId||""),sessionId=String(p.sessionId||"");
   if(role==="android")authRow_(sheet_(),p);else if(role==="web")requireAdmin_(p);else throw new Error("送信元が不正です。");
+  if(!deviceId||deviceId.length>128)throw new Error("端末IDが不正です。");
+  if(!sessionId||sessionId.length>128)throw new Error("セッションIDが不正です。");
   const to=role==="android"?"web":"android",type=String(p.type||"");
   if(!["offer","answer","ice","bye"].includes(type))throw new Error("シグナル種別が不正です。");
   const payload=String(p.payload||"");if(payload.length>30000)throw new Error("シグナルが大きすぎます。");
   const sig=signalSheet_(),lock=LockService.getScriptLock();lock.waitLock(10000);
   try{
     if(type==="offer"){
+      pruneSignals_(sig);
       const rows=sig.getDataRange().getValues();
-      for(let i=1;i<rows.length;i++)if(String(rows[i][1])===String(p.deviceId)&&!rows[i][8])sig.getRange(i+1,9).setValue(true);
+      for(let i=1;i<rows.length;i++)if(String(rows[i][1])===deviceId&&!rows[i][8])sig.getRange(i+1,9).setValue(true);
     }
-    sig.appendRow([Utilities.getUuid(),String(p.deviceId||""),String(p.sessionId||""),role,to,type,payload,new Date(),false]);
+    sig.appendRow([Utilities.getUuid(),deviceId,sessionId,role,to,type,payload,new Date(),false]);
     return {ok:true};
   }finally{lock.releaseLock();}
 }
+function pruneSignals_(sig){
+  const last=sig.getLastRow();if(last<2)return;
+  const cutoff=Date.now()-24*60*60*1000,rows=sig.getRange(2,1,last-1,9).getValues();
+  for(let i=rows.length-1;i>=0;i--){
+    const created=rows[i][7] instanceof Date?rows[i][7].getTime():new Date(rows[i][7]).getTime();
+    if(!created||created<cutoff)sig.deleteRow(i+2);
+  }
+}
 function pollSignals_(p){
-  const role=String(p.role||"");
+  const role=String(p.role||""),deviceId=String(p.deviceId||"");
   if(role==="android")authRow_(sheet_(),p);else if(role==="web")requireAdmin_(p);else throw new Error("受信側が不正です。");
+  if(!deviceId||deviceId.length>128)throw new Error("端末IDが不正です。");
   const sig=signalSheet_(),lock=LockService.getScriptLock();lock.waitLock(10000);
   try{
     const rows=sig.getDataRange().getValues(),out=[];
     for(let i=1;i<rows.length;i++){
-      if(String(rows[i][1])===String(p.deviceId)&&String(rows[i][4])===role&&!rows[i][8]&&(!p.sessionId||String(rows[i][2])===String(p.sessionId))){
+      if(String(rows[i][1])===deviceId&&String(rows[i][4])===role&&!rows[i][8]&&(!p.sessionId||String(rows[i][2])===String(p.sessionId))){
         out.push({sessionId:String(rows[i][2]),type:String(rows[i][5]),payload:String(rows[i][6])});
         sig.getRange(i+1,9).setValue(true);if(out.length>=30)break;
       }
