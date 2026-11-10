@@ -138,18 +138,7 @@ public class MainActivity extends Activity {
                 JSONObject response = post(endpoint, request);
                 String deviceId = response.getString("deviceId");
                 String deviceToken = response.getString("deviceToken");
-                JSONObject iceRequest = new JSONObject();
-                iceRequest.put("action", "getIceConfig");
-                iceRequest.put("role", "android");
-                iceRequest.put("deviceId", deviceId);
-                iceRequest.put("deviceToken", deviceToken);
                 String iceServers = "";
-                try {
-                    JSONObject iceConfig = post(endpoint, iceRequest);
-                    iceServers = iceConfig.optJSONArray("iceServers") == null ? "" : iceConfig.optJSONArray("iceServers").toString();
-                } catch (Exception iceError) {
-                    runOnUiThread(() -> status.setText("端末登録済み。ICE設定は監視開始後に再取得します。"));
-                }
                 prefs.edit()
                     .putString("deviceId", deviceId)
                     .putString("deviceToken", deviceToken)
