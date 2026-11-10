@@ -126,7 +126,7 @@ public class WebRtcSessionService extends Service {
     private void notifyStatus(String text){if(Build.VERSION.SDK_INT>=26)getSystemService(NotificationManager.class).notify(42,notification(text));}
     @Override public void onDestroy(){active=false;io.shutdownNow();network.shutdownNow();
         if(capturer!=null){try{capturer.stopCapture();}catch(Exception ignored){}try{capturer.dispose();}catch(Exception ignored){}}
-        if(peer!=null)try{peer.close();peer.dispose();}catch(Exception ignored){}
+        if(peer!=null)try{peer.dispose();}catch(Exception ignored){}
         if(videoSource!=null)try{videoSource.dispose();}catch(Exception ignored){}
         if(audioSource!=null)try{audioSource.dispose();}catch(Exception ignored){}
         if(texture!=null)try{texture.dispose();}catch(Exception ignored){}
