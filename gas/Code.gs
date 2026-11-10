@@ -35,6 +35,7 @@ function route_(p){
   const sh=sheet_();
   switch(p.action){
     case "ping":requireAdmin_(p);return {ok:true};
+    case "getIceConfig":if(String(p.role||"")==="android")authRow_(sh,p);else requireAdmin_(p);return getIceConfig_(String(p.deviceId||"web"));
     case "createPairCode":requireAdmin_(p);return createPairCode_(sh);
     case "claimPairCode":return claimPairCode_(sh,p);
     case "listDevices":requireAdmin_(p);return list_(sh);
@@ -45,6 +46,25 @@ function route_(p){
     case "pollSignals":return pollSignals_(p);
     default:throw new Error("未対応の操作です。");
   }
+}
+function getIceConfig_(identity){
+  const props=PropertiesService.getScriptProperties();
+  const stunText=String(props.getProperty("STUN_URLS")||"stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302");
+  const stunUrls=stunText.split(",").map(v=>v.trim()).filter(v=>/^stun:|^stuns:/i.test(v));
+  const servers=[];
+  if(stunUrls.length)servers.push({urls:stunUrls});
+  const turnUrls=String(props.getProperty("TURN_URLS")||"").split(",").map(v=>v.trim()).filter(v=>/^turns?:/i.test(v));
+  const sharedSecret=String(props.getProperty("TURN_SHARED_SECRET")||"");
+  let relayConfigured=false;
+  if(turnUrls.length&&sharedSecret){
+    const ttl=Math.max(300,Math.min(86400,Number(props.getProperty("TURN_CREDENTIAL_TTL_SECONDS")||3600)));
+    const expires=Math.floor(Date.now()/1000)+ttl;
+    const username=String(expires)+":"+String(identity||"device");
+    const signature=Utilities.computeHmacSha1Signature(username,sharedSecret);
+    servers.push({urls:turnUrls,username:username,credential:Utilities.base64Encode(signature)});
+    relayConfigured=true;
+  }
+  return {ok:true,iceServers:servers,relayConfigured:relayConfigured,credentialTtlSeconds:relayConfigured?ttl:null};
 }
 function requireAdmin_(p){
   const key=PropertiesService.getScriptProperties().getProperty("ADMIN_KEY");
