@@ -4,7 +4,22 @@ const state={selected:null,pc:null,sessionId:null,pollTimer:null,connecting:fals
 const savedUrl=localStorage.getItem("rdc_gas_url")||window.RDC_CONFIG?.GAS_URL||"",savedKey=localStorage.getItem("rdc_admin_key")||"";
 urlInput.value=savedUrl;keyInput.value=savedKey;
 function config(){const url=urlInput.value.trim(),adminKey=keyInput.value.trim();if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url))throw Error("GAS WebアプリURLを正しく入力してください。");if(adminKey.length<24)throw Error("管理者キーは24文字以上にしてください。");return{url,adminKey};}
-async function api(action,data={}){const c=config(),r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action,adminKey:c.adminKey,...data})});if(!r.ok)throw Error("GAS通信エラー: "+r.status);const j=await r.json();if(!j.ok)throw Error(j.error||"GAS処理に失敗しました。");return j;}
+async function api(action,data={}){
+ const c=config(),requestId="rdc-"+Date.now()+"-"+Math.random().toString(36).slice(2),frameName=requestId.replace(/[^a-zA-Z0-9_-]/g,"");
+ return new Promise((resolve,reject)=>{
+  const frame=document.createElement("iframe"),form=document.createElement("form");
+  frame.name=frameName;frame.title="GAS通信";frame.style.display="none";
+  form.method="POST";form.action=c.url;form.target=frameName;form.style.display="none";
+  const fields={rdcPayload:JSON.stringify({action,adminKey:c.adminKey,...data}),rdcRequestId:requestId};
+  for(const [name,value] of Object.entries(fields)){const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;form.append(input);}
+  let finished=false;
+  const cleanup=()=>{window.removeEventListener("message",onMessage);clearTimeout(timer);form.remove();frame.remove();};
+  const finish=(fn,value)=>{if(finished)return;finished=true;cleanup();fn(value);};
+  const onMessage=event=>{if(event.source!==frame.contentWindow||!event.data||event.data.channel!=="rdc-api"||event.data.requestId!==requestId)return;const result=event.data.response;if(!result||typeof result!=="object")return finish(reject,new Error("GASから不正な応答が返りました。"));if(!result.ok)return finish(reject,new Error(result.error||"GAS処理に失敗しました。"));finish(resolve,result);};
+  const timer=setTimeout(()=>finish(reject,new Error("GAS応答がタイムアウトしました。URL・公開設定・通信状態を確認してください。")),30000);
+  window.addEventListener("message",onMessage);document.body.append(frame,form);form.submit();
+ });
+}
 function msg(t,error=false){message.textContent=t;message.style.color=error?"#ff9aa8":"#8ee4d6";}
 function render(list){devices.replaceChildren();if(!list.length){const p=document.createElement("p");p.className="empty";p.textContent="登録済み端末はありません。";devices.append(p);return;}for(const d of list){const card=document.createElement("article"),info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("small"),btn=document.createElement("button");card.className="device";name.textContent=d.name||"Android";meta.textContent=(d.online?"🟢 オンライン":"⚫ オフライン")+" · 最終確認: "+(d.lastSeen||"不明");btn.className="secondary";btn.textContent="操作";btn.addEventListener("click",()=>{state.selected=d;$("selectedName").textContent=d.name;$("controlPanel").hidden=false;$("commandStatus").textContent="Android側で映像・音声セッションを開始してください。";});info.append(name,meta);card.append(info,btn);devices.append(card);}}
 async function refresh(){try{apiState.textContent="接続中";const r=await api("listDevices");render(r.devices||[]);apiState.textContent="GAS接続済み";}catch(e){apiState.textContent="未接続";msg(e.message,true);}}
