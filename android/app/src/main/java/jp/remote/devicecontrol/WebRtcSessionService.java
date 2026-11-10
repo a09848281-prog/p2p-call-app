@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -110,7 +111,7 @@ public class WebRtcSessionService extends Service {
                 .createPeerConnectionFactory();
 
             PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(
-                List.of(
+                Arrays.asList(
                     PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
                     PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
                 )
