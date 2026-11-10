@@ -4,7 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
-import android.app.Service;
+import android.app.Service;\nimport android.graphics.drawable.Icon;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
@@ -28,7 +28,7 @@ public class DeviceMonitorService extends Service {
         else if("request_status".equals(cmd)){update("端末はオンラインです");}
     }catch(Exception e){update("接続確認に失敗しました。再試行します");}}
     private void createChannel(){if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(CHANNEL,"端末接続監視",NotificationManager.IMPORTANCE_LOW);getSystemService(NotificationManager.class).createNotificationChannel(c);}}
-    private Notification notification(String text){Intent stop=new Intent(this,StopReceiver.class);PendingIntent pi=PendingIntent.getBroadcast(this,0,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);return new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_upload).setContentTitle("Remote Device Control").setContentText(text).addAction(new Notification.Action.Builder(null,"停止",pi).build()).setOngoing(true).build();}
+    private Notification notification(String text){Intent stop=new Intent(this,StopReceiver.class);PendingIntent pi=PendingIntent.getBroadcast(this,0,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);return new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.stat_sys_upload).setContentTitle("Remote Device Control").setContentText(text).addAction(new Notification.Action.Builder(Icon.createWithResource(this,android.R.drawable.ic_media_pause),"停止",pi).build()).setOngoing(true).build();}
     private void update(String text){getSystemService(NotificationManager.class).notify(41,notification(text));}
     @Override public int onStartCommand(Intent i,int flags,int startId){return START_STICKY;}
     @Override public void onDestroy(){if(scheduler!=null)scheduler.shutdownNow();super.onDestroy();}
