@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
         launchScreenCaptureConsent();
     }
     private void launchScreenCaptureConsent(){
+        stopService(new Intent(this,WebRtcSessionService.class));
         android.media.projection.MediaProjectionManager manager=(android.media.projection.MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);
         if(manager==null){status.setText("画面共有機能を利用できません");return;}
         status.setText("Androidの画面共有確認を待っています…");
