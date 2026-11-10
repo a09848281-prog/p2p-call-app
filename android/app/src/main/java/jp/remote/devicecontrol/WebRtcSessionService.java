@@ -84,7 +84,7 @@ public class WebRtcSessionService extends Service {
                     peer.setLocalDescription(new SdpObserver(){
                         public void onCreateSuccess(SessionDescription d){}
                         public void onSetSuccess(){
-                            sendSignal("offer",desc.sdp);offerQueued=true;
+                            sendSignal("offer",desc.description);offerQueued=true;
                             synchronized(pendingIce){for(IceCandidate c:pendingIce)sendIce(c);pendingIce.clear();}
                         }
                         public void onCreateFailure(String e){notifyStatus("Offer作成失敗: "+e);stopSelf();}
