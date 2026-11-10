@@ -136,12 +136,22 @@ public class MainActivity extends Activity {
                 request.put("pairCode", code);
                 request.put("name", finalName);
                 JSONObject response = post(endpoint, request);
+                String deviceId = response.getString("deviceId");
+                String deviceToken = response.getString("deviceToken");
+                JSONObject iceRequest = new JSONObject();
+                iceRequest.put("action", "getIceConfig");
+                iceRequest.put("role", "android");
+                iceRequest.put("deviceId", deviceId);
+                iceRequest.put("deviceToken", deviceToken);
+                JSONObject iceConfig = post(endpoint, iceRequest);
                 prefs.edit()
-                    .putString("deviceId", response.getString("deviceId"))
-                    .putString("deviceToken", response.getString("deviceToken"))
+                    .putString("deviceId", deviceId)
+                    .putString("deviceToken", deviceToken)
                     .putString("deviceName", finalName)
+                    .putString("iceServers", iceConfig.optJSONArray("iceServers") == null ? "" : iceConfig.optJSONArray("iceServers").toString())
+                    .putLong("iceConfigFetchedAt", System.currentTimeMillis())
                     .apply();
-                runOnUiThread(() -> status.setText("登録完了！次回から登録コードは不要です。"));
+                runOnUiThread(() -> status.setText("登録完了！次回から登録コードは不要です。ICE通信設定も取得しました。"));
             } catch (Exception ex) {
                 runOnUiThread(() -> status.setText("登録失敗: " + ex.getMessage()));
             } finally {
