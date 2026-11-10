@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - name: Check JavaScript syntax\n        run: |\n          node --check web/app.js\n          node --check < gas/Code.gs\n          python -m json.tool web/manifest.webmanifest > /dev/null\n      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
