@@ -1,7 +1,24 @@
 const RDC_SHEET = "Devices";
 const RDC_SIGNAL_SHEET = "Signals";
 function doGet(){return json_({ok:true,service:"Remote Device Control GAS",version:3});}
-function doPost(e){try{const p=JSON.parse(e?.postData?.contents||"{}");return json_(route_(p));}catch(err){return json_({ok:false,error:String(err.message||err)});}}
+function doPost(e){
+  const formMode=!!(e&&e.parameter&&e.parameter.rdcPayload);
+  const requestId=formMode?String(e.parameter.rdcRequestId||""):"";
+  try{
+    const body=formMode?e.parameter.rdcPayload:(e?.postData?.contents||"{}");
+    const p=JSON.parse(body);
+    const result=route_(p);
+    return formMode?iframeResponse_(result,requestId):json_(result);
+  }catch(err){
+    const result={ok:false,error:String(err.message||err)};
+    return formMode?iframeResponse_(result,requestId):json_(result);
+  }
+}
+function iframeResponse_(result,requestId){
+  const message=JSON.stringify({channel:"rdc-api",requestId:String(requestId||""),response:result}).replace(/</g,"\\u003c");
+  const html='<!doctype html><meta charset="utf-8"><script>window.parent.postMessage('+message+',"*");</script>';
+  return HtmlService.createHtmlOutput(html).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
 function setup(){const ss=SpreadsheetApp.getActiveSpreadsheet();if(!ss)throw new Error("このスクリプトをGoogle Sheetsから開いてください。");let sh=ss.getSheetByName(RDC_SHEET);if(!sh)sh=ss.insertSheet(RDC_SHEET);if(sh.getLastRow()===0)sh.appendRow(["deviceId","name","tokenHash","pairCode","paired","lastSeen","status","pendingCommand","pairExpiresAt"]);if(sh.getLastColumn()<9)sh.getRange(1,9).setValue("pairExpiresAt");let sig=ss.getSheetByName(RDC_SIGNAL_SHEET);if(!sig)sig=ss.insertSheet(RDC_SIGNAL_SHEET);if(sig.getLastRow()===0)sig.appendRow(["signalId","deviceId","sessionId","fromRole","toRole","type","payload","createdAt","consumed"]);return "セットアップ完了。ADMIN_KEYをスクリプトプロパティに設定してください。";}
 function route_(p){const sh=sheet_();switch(p.action){case "ping":requireAdmin_(p);return {ok:true};case "createPairCode":requireAdmin_(p);return createPairCode_(sh);case "claimPairCode":return claimPairCode_(sh,p);case "listDevices":requireAdmin_(p);return list_(sh);case "heartbeat":return heartbeat_(sh,p);case "pollCommand":return poll_(sh,p);case "queueCommand":requireAdmin_(p);return queue_(sh,p);case "sendSignal":return sendSignal_(p);case "pollSignals":return pollSignals_(p);default:throw new Error("未対応の操作です。");}}
 function requireAdmin_(p){const key=PropertiesService.getScriptProperties().getProperty("ADMIN_KEY");if(!key||!constantTimeEqual_(String(p.adminKey||""),key))throw new Error("管理者キーが違います。");}
