@@ -4,6 +4,7 @@ import android.app.*;
 import android.content.*;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
+import android.media.projection.MediaProjection;
 import android.os.*;
 import org.json.JSONObject;
 import org.webrtc.*;
@@ -12,13 +13,19 @@ import java.util.concurrent.*;
 
 public class WebRtcSessionService extends Service {
     public static final String ACTION_START="jp.remote.devicecontrol.START_MEDIA";
+    public static final String ACTION_START_SCREEN="jp.remote.devicecontrol.START_SCREEN";
     public static final String ACTION_STOP="jp.remote.devicecontrol.STOP_MEDIA";
+    public static final String EXTRA_RESULT_CODE="projectionResultCode";
+    public static final String EXTRA_RESULT_DATA="projectionResultData";
     private static final String CHANNEL="rdc_media";
     private final ScheduledExecutorService io=Executors.newSingleThreadScheduledExecutor();
     private final ExecutorService network=Executors.newSingleThreadExecutor();
     private final List<IceCandidate> pendingIce=Collections.synchronizedList(new ArrayList<>());
     private final List<IceCandidate> pendingRemoteIce=Collections.synchronizedList(new ArrayList<>());
-    private volatile boolean offerQueued=false,remoteDescriptionSet=false,active=false;
+    private volatile boolean offerQueued=false,remoteDescriptionSet=false,active=false,screenMode=false;
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private BroadcastReceiver screenStateReceiver;
+    private Runnable screenGuard;
     private EglBase egl;
     private PeerConnectionFactory factory;
     private PeerConnection peer;
@@ -32,19 +39,39 @@ public class WebRtcSessionService extends Service {
     @Override public void onCreate(){super.onCreate();createChannel();}
     @Override public int onStartCommand(Intent intent,int flags,int startId){
         if(intent!=null&&ACTION_STOP.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
-        if(intent==null||!ACTION_START.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
-        if(!active)startMedia();
+        if(intent==null){stopSelf();return START_NOT_STICKY;}
+        if(!active&&ACTION_START.equals(intent.getAction()))startMedia(false,Activity.RESULT_CANCELED,null);
+        else if(!active&&ACTION_START_SCREEN.equals(intent.getAction())){
+            int resultCode=intent.getIntExtra(EXTRA_RESULT_CODE,Activity.RESULT_CANCELED);
+            Intent resultData=(Intent)intent.getParcelableExtra(EXTRA_RESULT_DATA);
+            startMedia(true,resultCode,resultData);
+        }else if(!ACTION_START.equals(intent.getAction())&&!ACTION_START_SCREEN.equals(intent.getAction()))stopSelf();
         return START_NOT_STICKY;
     }
-    private void startMedia(){
+    private void startMedia(boolean useScreen,int projectionResultCode,Intent projectionData){
         try{
-            if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED ||
-               checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
-                throw new SecurityException("カメラとマイクの権限が必要です");
-            if(Build.VERSION.SDK_INT>=29)startForeground(42,notification("カメラ・マイクを使用中です"),ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA|ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-            else startForeground(42,notification("カメラ・マイクを使用中です"));
-            active=true;
             PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
+            if(checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                throw new SecurityException("マイクの権限が必要です");
+            if(!useScreen&&checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+                throw new SecurityException("カメラの権限が必要です");
+            if(useScreen&&(projectionResultCode!=Activity.RESULT_OK||projectionData==null))
+                throw new SecurityException("画面共有の許可が確認できません");
+            if(useScreen&&(!pm.isInteractive()||((KeyguardManager)getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked()))
+                throw new SecurityException("画面共有は画面点灯中・ロック解除中のみ開始できます");
+            int foregroundTypes=ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+            String foregroundText;
+            if(useScreen){
+                foregroundTypes|=ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+                foregroundText="画面を共有中です（画面消灯・ロックで自動停止）";
+            }else{
+                foregroundTypes|=ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+                foregroundText="カメラ・マイクを使用中です";
+            }
+            if(Build.VERSION.SDK_INT>=29)startForeground(42,notification(foregroundText),foregroundTypes);
+            else startForeground(42,notification(foregroundText));
+            active=true;
+            screenMode=useScreen;
             wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"RemoteDeviceControl:MediaSession");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(8L*60L*60L*1000L);
@@ -71,12 +98,24 @@ public class WebRtcSessionService extends Service {
             audioSource=factory.createAudioSource(new MediaConstraints());
             AudioTrack audio=factory.createAudioTrack("rdc_audio",audioSource);audio.setEnabled(true);
             peer.addTrack(audio,Collections.singletonList("rdc_stream"));
-            capturer=createCameraCapturer();
-            if(capturer==null)throw new Exception("利用可能なカメラがありません");
-            texture=SurfaceTextureHelper.create("RDC-Camera",egl.getEglBaseContext());
-            videoSource=factory.createVideoSource(false);
+            if(useScreen){
+                capturer=new ScreenCapturerAndroid(projectionData,new MediaProjection.Callback(){
+                    @Override public void onStop(){notifyStatus("画面共有が終了しました");sendSignal("bye","");stopSelf();}
+                });
+            }else{
+                capturer=createCameraCapturer();
+                if(capturer==null)throw new Exception("利用可能なカメラがありません");
+            }
+            texture=SurfaceTextureHelper.create(useScreen?"RDC-Screen":"RDC-Camera",egl.getEglBaseContext());
+            videoSource=factory.createVideoSource(useScreen);
             capturer.initialize(texture,getApplicationContext(),videoSource.getCapturerObserver());
-            capturer.startCapture(640,480,20);
+            if(useScreen){
+                android.util.DisplayMetrics metrics=getResources().getDisplayMetrics();
+                capturer.startCapture(Math.max(2,metrics.widthPixels),Math.max(2,metrics.heightPixels),15);
+                registerScreenGuards();
+            }else{
+                capturer.startCapture(640,480,20);
+            }
             VideoTrack video=factory.createVideoTrack("rdc_video",videoSource);video.setEnabled(true);
             peer.addTrack(video,Collections.singletonList("rdc_stream"));
             peer.createOffer(new SdpObserver(){
@@ -98,6 +137,35 @@ public class WebRtcSessionService extends Service {
             io.scheduleWithFixedDelay(this::pollSignals,1,2,TimeUnit.SECONDS);
             notifyStatus("映像・音声セッションを開始しました。画面消灯中も接続維持を試みます");
         }catch(Exception e){notifyStatus("開始失敗: "+e.getMessage());stopSelf();}
+    }
+    private void registerScreenGuards(){
+        screenStateReceiver=new BroadcastReceiver(){
+            @Override public void onReceive(Context context,Intent intent){
+                if(Intent.ACTION_SCREEN_OFF.equals(intent.getAction()))stopScreenShare("画面が消灯したため画面共有を停止しました");
+            }
+        };
+        IntentFilter filter=new IntentFilter(Intent.ACTION_SCREEN_OFF);
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(screenStateReceiver,filter,Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(screenStateReceiver,filter);
+        screenGuard=new Runnable(){
+            @Override public void run(){
+                if(!screenMode||!active)return;
+                PowerManager power=(PowerManager)getSystemService(POWER_SERVICE);
+                KeyguardManager keyguard=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
+                if(power==null||!power.isInteractive()||(keyguard!=null&&keyguard.isKeyguardLocked())){
+                    stopScreenShare("画面消灯またはロックを検知したため画面共有を停止しました");
+                    return;
+                }
+                mainHandler.postDelayed(this,1000);
+            }
+        };
+        mainHandler.postDelayed(screenGuard,1000);
+    }
+    private void stopScreenShare(String reason){
+        if(!screenMode||!active)return;
+        notifyStatus(reason);
+        sendSignal("bye","");
+        mainHandler.postDelayed(this::stopSelf,1200);
     }
     private VideoCapturer createCameraCapturer(){
         Camera2Enumerator en=new Camera2Enumerator(this);
@@ -124,7 +192,10 @@ public class WebRtcSessionService extends Service {
             .addAction(new Notification.Action.Builder(Icon.createWithResource(this,android.R.drawable.ic_media_pause),"セッション停止",pi).build()).setOngoing(true).build();
     }
     private void notifyStatus(String text){if(Build.VERSION.SDK_INT>=26)getSystemService(NotificationManager.class).notify(42,notification(text));}
-    @Override public void onDestroy(){active=false;io.shutdownNow();network.shutdownNow();
+    @Override public void onDestroy(){active=false;
+        if(screenGuard!=null)mainHandler.removeCallbacks(screenGuard);
+        if(screenStateReceiver!=null){try{unregisterReceiver(screenStateReceiver);}catch(Exception ignored){}screenStateReceiver=null;}
+        io.shutdownNow();network.shutdownNow();
         if(capturer!=null){try{capturer.stopCapture();}catch(Exception ignored){}try{capturer.dispose();}catch(Exception ignored){}}
         if(peer!=null)try{peer.dispose();}catch(Exception ignored){}
         if(videoSource!=null)try{videoSource.dispose();}catch(Exception ignored){}
