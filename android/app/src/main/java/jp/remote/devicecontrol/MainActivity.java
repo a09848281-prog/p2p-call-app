@@ -143,15 +143,21 @@ public class MainActivity extends Activity {
                 iceRequest.put("role", "android");
                 iceRequest.put("deviceId", deviceId);
                 iceRequest.put("deviceToken", deviceToken);
-                JSONObject iceConfig = post(endpoint, iceRequest);
+                String iceServers = "";
+                try {
+                    JSONObject iceConfig = post(endpoint, iceRequest);
+                    iceServers = iceConfig.optJSONArray("iceServers") == null ? "" : iceConfig.optJSONArray("iceServers").toString();
+                } catch (Exception iceError) {
+                    runOnUiThread(() -> status.setText("端末登録済み。ICE設定は監視開始後に再取得します。"));
+                }
                 prefs.edit()
                     .putString("deviceId", deviceId)
                     .putString("deviceToken", deviceToken)
                     .putString("deviceName", finalName)
-                    .putString("iceServers", iceConfig.optJSONArray("iceServers") == null ? "" : iceConfig.optJSONArray("iceServers").toString())
-                    .putLong("iceConfigFetchedAt", System.currentTimeMillis())
+                    .putString("iceServers", iceServers)
+                    .putLong("iceConfigFetchedAt", iceServers.isEmpty() ? 0L : System.currentTimeMillis())
                     .apply();
-                runOnUiThread(() -> status.setText("登録完了！次回から登録コードは不要です。ICE通信設定も取得しました。"));
+                runOnUiThread(() -> status.setText("登録完了！次回から登録コードは不要です。"));
             } catch (Exception ex) {
                 runOnUiThread(() -> status.setText("登録失敗: " + ex.getMessage()));
             } finally {
