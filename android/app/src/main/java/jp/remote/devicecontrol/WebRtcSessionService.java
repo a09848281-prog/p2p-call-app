@@ -66,14 +66,39 @@ public class WebRtcSessionService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         if (ACTION_STOP.equals(intent.getAction())) {
-            sendSignal("bye", "");
-            stopSelf();
+            sendByeAndStop();
             return START_NOT_STICKY;
         }
         if (ACTION_START.equals(intent.getAction()) && !active) {
             startCameraMicrophoneSession();
         }
         return START_NOT_STICKY;
+    }
+
+    private void sendByeAndStop() {
+        if (network.isShutdown()) {
+            stopSelf();
+            return;
+        }
+        try {
+            network.execute(() -> {
+                try {
+                    SharedPreferences prefs = getSharedPreferences("rdc", MODE_PRIVATE);
+                    JSONObject request = auth(prefs);
+                    request.put("action", "sendSignal");
+                    request.put("fromRole", "android");
+                    request.put("type", "bye");
+                    request.put("sessionId", sessionId);
+                    request.put("payload", "");
+                    MainActivity.post(prefs.getString("gasUrl", ""), request);
+                } catch (Exception ignored) {
+                } finally {
+                    stopSelf();
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            stopSelf();
+        }
     }
 
     private void startCameraMicrophoneSession() {
