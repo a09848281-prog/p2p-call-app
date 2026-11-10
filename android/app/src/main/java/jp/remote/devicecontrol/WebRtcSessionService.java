@@ -121,6 +121,7 @@ public class WebRtcSessionService extends Service {
                 startForeground(NOTIFICATION_ID, notification);
             }
             active = true;
+            getSharedPreferences("rdc", MODE_PRIVATE).edit().remove("lastMediaError").apply();
             startupStage = "バックグラウンド初期化";
             startup.execute(this::startCameraMicrophoneSession);
         } catch (Exception error) {
