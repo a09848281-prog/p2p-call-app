@@ -1,6 +1,6 @@
 const RDC_SHEET = "Devices";
 const RDC_SIGNAL_SHEET = "Signals";
-function doGet(){return json_({ok:true,service:"Remote Device Control GAS",version:4});}
+function doGet(){return json_({ok:true,service:"Remote Device Control GAS",version:5});}
 function doPost(e){
   const formMode=!!(e&&e.parameter&&e.parameter.rdcPayload);
   const requestId=formMode?String(e.parameter.rdcRequestId||""):"";
@@ -35,7 +35,7 @@ function route_(p){
   const sh=sheet_();
   switch(p.action){
     case "ping":requireAdmin_(p);return {ok:true};
-    case "getIceConfig":if(String(p.role||"")==="android")authRow_(sh,p);else requireAdmin_(p);return getIceConfig_(String(p.deviceId||"web"));
+    case "getIceConfig":if(String(p.role||"")==="android")authRow_(sh,p);else requireAdmin_(p);return getIceConfig_();
     case "createPairCode":requireAdmin_(p);return createPairCode_(sh);
     case "claimPairCode":return claimPairCode_(sh,p);
     case "listDevices":requireAdmin_(p);return list_(sh);
@@ -47,26 +47,13 @@ function route_(p){
     default:throw new Error("未対応の操作です。");
   }
 }
-function getIceConfig_(identity){
+// STUNは接続候補の発見だけに使います。映像・音声は端末間P2Pで送信し、TURN中継は使いません。
+function getIceConfig_(){
   const props=PropertiesService.getScriptProperties();
   const stunText=String(props.getProperty("STUN_URLS")||"stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302");
   const stunUrls=stunText.split(",").map(v=>v.trim()).filter(v=>/^stun:|^stuns:/i.test(v));
-  const servers=[];
-  if(stunUrls.length)servers.push({urls:stunUrls});
-  const turnUrls=String(props.getProperty("TURN_URLS")||"").split(",").map(v=>v.trim()).filter(v=>/^turns?:/i.test(v));
-  const sharedSecret=String(props.getProperty("TURN_SHARED_SECRET")||"");
-  let relayConfigured=false,ttlValue=0;
-  if(turnUrls.length&&sharedSecret){
-    const requestedTtl=Number(props.getProperty("TURN_CREDENTIAL_TTL_SECONDS")||3600);
-    const ttl=Math.max(300,Math.min(86400,Number.isFinite(requestedTtl)?requestedTtl:3600));
-    ttlValue=ttl;
-    const expires=Math.floor(Date.now()/1000)+ttl;
-    const username=String(expires)+":"+String(identity||"device");
-    const signature=Utilities.computeHmacSha1Signature(username,sharedSecret);
-    servers.push({urls:turnUrls,username:username,credential:Utilities.base64Encode(signature)});
-    relayConfigured=true;
-  }
-  return {ok:true,iceServers:servers,relayConfigured:relayConfigured,credentialTtlSeconds:relayConfigured?ttlValue:null};
+  const servers=stunUrls.length?[{urls:stunUrls}]:[];
+  return {ok:true,iceServers:servers,relayConfigured:false,transport:"p2p-only"};
 }
 function requireAdmin_(p){
   const key=PropertiesService.getScriptProperties().getProperty("ADMIN_KEY");
