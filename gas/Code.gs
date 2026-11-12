@@ -1,4 +1,5 @@
 const PREFIX='WRTC_ROOM_';
+const MESSAGE_PREFIX='WRTC_MSG_';
 const ROOM_TTL_MS=10*60*1000;
 const MAX_MESSAGES=120;
 function doPost(e){
@@ -36,7 +37,7 @@ function createRoom_(b){
   try{
     const p=PropertiesService.getScriptProperties(),key=PREFIX+room;
     if(p.getProperty(key))throw new Error('このコードは使用中です。もう一度開始してください');
-    p.setProperty(key,JSON.stringify({room:room,host:host,guest:'',offer:offer,created:Date.now(),expires:Date.now()+ROOM_TTL_MS,messages:[]}));
+    p.setProperty(key,JSON.stringify({room:room,host:host,guest:'',offer:offer,created:Date.now(),expires:Date.now()+ROOM_TTL_MS,messageCount:0}));
   }finally{lock.releaseLock()}
   return {room:room,expiresIn:ROOM_TTL_MS};
 }
@@ -51,7 +52,7 @@ function joinRoom_(b){
 }
 function sendSignal_(b){
   const room=validRoom_(b.room),token=String(b.token||''),signal=b.signal;
-  if(!signal||JSON.stringify(signal).length>55000)throw new Error('通信データが不正です');
+  if(!signal||JSON.stringify(signal).length>5000)throw new Error('通信データが不正です');
   const lock=LockService.getScriptLock();lock.waitLock(5000);
   try{
     const p=PropertiesService.getScriptProperties(),key=PREFIX+room,s=readRoom_(p,key);
@@ -60,28 +61,39 @@ function sendSignal_(b){
     if(['answer','ice','close'].indexOf(signal.type)<0)throw new Error('許可されていない信号です');
     if(signal.type==='answer'&&(from!=='guest'||!signal.description||signal.description.type!=='answer'))throw new Error('Answerが不正です');
     if(signal.type==='ice'&&(!signal.candidate||typeof signal.candidate.candidate!=='string'))throw new Error('ICE候補が不正です');
-    s.messages=s.messages||[];if(s.messages.length>=MAX_MESSAGES)s.messages=s.messages.slice(-MAX_MESSAGES+1);
-    s.messages.push({id:Utilities.getUuid(),to:from==='host'?'guest':'host',signal:signal});
-    p.setProperty(key,JSON.stringify(s));return {sent:true};
+    if((s.messageCount||0)>=MAX_MESSAGES)throw new Error('通信メッセージ数の上限に達しました');
+    const id=Utilities.getUuid(),message={id:id,to:from==='host'?'guest':'host',signal:signal};
+    p.setProperty(MESSAGE_PREFIX+room+'_'+id,JSON.stringify(message));
+    s.messageCount=(s.messageCount||0)+1;p.setProperty(key,JSON.stringify(s));
+    return {sent:true};
   }finally{lock.releaseLock()}
 }
 function poll_(b){
-  const room=validRoom_(b.room),token=String(b.token||''),p=PropertiesService.getScriptProperties(),key=PREFIX+room,s=readRoom_(p,key);
-  const who=token===s.host?'host':(s.guest&&token===s.guest?'guest':'');
-  if(!who)throw new Error('認証に失敗しました');
-  const messages=(s.messages||[]).filter(m=>m.to===who);
-  s.messages=(s.messages||[]).filter(m=>m.to!==who);
-  p.setProperty(key,JSON.stringify(s));return {messages:messages};
+  const room=validRoom_(b.room),token=String(b.token||''),lock=LockService.getScriptLock();lock.waitLock(5000);
+  try{
+    const p=PropertiesService.getScriptProperties(),key=PREFIX+room,s=readRoom_(p,key);
+    const who=token===s.host?'host':(s.guest&&token===s.guest?'guest':'');
+    if(!who)throw new Error('認証に失敗しました');
+    const all=p.getProperties(),prefix=MESSAGE_PREFIX+room+'_',messages=[],remove=[];
+    Object.keys(all).forEach(k=>{if(k.indexOf(prefix)!==0)return;try{const m=JSON.parse(all[k]);if(m.to===who){messages.push(m);remove.push(k)}}catch(e){remove.push(k)}});
+    remove.forEach(k=>p.deleteProperty(k));
+    s.messageCount=Math.max(0,(s.messageCount||0)-remove.length);p.setProperty(key,JSON.stringify(s));
+    return {messages:messages};
+  }finally{lock.releaseLock()}
 }
 function readRoom_(p,key){
   const raw=p.getProperty(key);if(!raw)throw new Error('接続コードが無効か期限切れです');
-  const s=JSON.parse(raw);if(Date.now()>s.expires){p.deleteProperty(key);throw new Error('接続コードの有効期限が切れました')}
+  const s=JSON.parse(raw);if(Date.now()>s.expires){p.deleteProperty(key);clearRoomMessages_(p,s.room);throw new Error('接続コードの有効期限が切れました')}
   return s;
+}
+function clearRoomMessages_(p,room){
+  const all=p.getProperties(),prefix=MESSAGE_PREFIX+room+'_';
+  Object.keys(all).filter(k=>k.indexOf(prefix)===0).forEach(k=>p.deleteProperty(k));
 }
 function validRoom_(v){const s=String(v||'');if(!/^\d{6}$/.test(s))throw new Error('接続コードは6桁で入力してください');return s}
 function token_(){return Utilities.getUuid().replace(/-/g,'')+Utilities.getUuid().replace(/-/g,'').slice(0,16)}
 function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
 function cleanupExpiredRooms(){
   const p=PropertiesService.getScriptProperties(),all=p.getProperties(),now=Date.now();
-  Object.keys(all).filter(k=>k.indexOf(PREFIX)===0).forEach(k=>{try{if(JSON.parse(all[k]).expires<now)p.deleteProperty(k)}catch(e){p.deleteProperty(k)}});
+  Object.keys(all).filter(k=>k.indexOf(PREFIX)===0).forEach(k=>{try{const s=JSON.parse(all[k]);if(s.expires<now){p.deleteProperty(k);clearRoomMessages_(p,s.room)}}catch(e){p.deleteProperty(k)}});
 }
