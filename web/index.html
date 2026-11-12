@@ -1,67 +1,10 @@
 <!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#101827">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>Remote Device Control</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=0.7.0">
-</head>
-<body>
-<header>
-  <div><p class="eyebrow">REMOTE DEVICE CONTROL</p><h1>端末管理</h1><p class="sub">登録済みAndroidをiPadから管理</p></div>
-  <span id="apiState" class="pill">未接続</span>
-</header>
-<main>
-  <section class="panel">
-    <h2>GAS接続設定</h2>
-    <label for="gasUrl">GAS WebアプリURL</label>
-    <input id="gasUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-    <label for="adminKey">管理者キー</label>
-    <input id="adminKey" type="password" autocomplete="off" placeholder="GASのスクリプトプロパティ ADMIN_KEY">
-    <button id="saveUrl" class="secondary">設定を保存・接続確認</button>
-    <p class="hint">管理者キーはこのiPadのブラウザ内に保存されます。共有端末では使用しないでください。</p>
-  </section>
-  <section class="panel">
-    <div class="row"><h2>登録済み端末</h2><button id="refresh" class="secondary">更新</button></div>
-    <div id="devices" class="devices"><p class="empty">GAS URLと管理者キーを設定してください。</p></div>
-  </section>
-  <section class="panel">
-    <h2>新しいAndroidを登録</h2>
-    <p class="hint">登録コードを発行し、Androidアプリに6桁コードを入力します。コードは10分で失効し、1回だけ使用できます。</p>
-    <button id="createPair" class="primary">＋ 登録コードを発行</button>
-    <div id="pairResult" class="pair-result" hidden><strong id="pairCodeText"></strong><small>このコードをAndroidアプリに入力してください。</small></div>
-    <p id="message" role="status" class="message"></p>
-  </section>
-  <section class="panel" id="controlPanel" hidden>
-    <div class="row"><h2 id="selectedName">端末操作</h2><button id="closeControl" class="secondary">閉じる</button></div>
-    <video id="remoteVideo" autoplay playsinline controls></video>
-    <button id="enablePlayback" class="secondary" type="button">🔊 再生を有効化（音声・映像）</button>
-    <p class="hint">黒い画面や音声が出ない場合は、まずこのボタンを押してください。受信状況は下の診断表示で確認できます。</p>
-    <div class="actions">
-      <button id="viewBtn" class="primary">📡 映像・音声に接続</button>
-      <button id="endViewBtn" class="secondary">接続を切断</button>
-      <button data-command="start_session" class="secondary">📷 Androidに開始通知を送る</button>
-      <button data-command="stop_session" class="secondary">映像・音声を停止</button>
-      <button data-command="request_status" class="secondary">状態確認</button>
-    </div>
-    <p class="hint">開始通知をAndroidでタップするとアプリが開きます。カメラ・マイクはAndroid側で開始します。開始後は通知を表示したまま画面ロック後も継続を試みます。iPadから無人で新規起動することはできません。</p>
-    <p id="commandStatus" class="message" aria-live="polite"></p>
-  </section>
-  <section class="panel">
-    <h2>動作上の注意</h2>
-    <p class="hint">映像・音声はWebRTCで端末間を直接P2P通信します。GASは接続情報（シグナリング）の交換に使用し、STUNは端末から直接利用します。TURN中継サーバーは使用しません。そのため、一部のネットワークでは接続できない場合があります。Androidではカメラ・マイクの使用中に通知とプライバシー表示が出ます。</p>
-  </section>
-</main>
-<footer>自分が所有する端末、または明確な許可を得た端末のみ使用してください。カメラ・マイクの利用はAndroid側で明示的に開始・停止できます。</footer>
-<script src="config.js?v=0.7.0"></script>
-<script src="app.js?v=0.7.0"></script>
-<script>
-if ("serviceWorker" in navigator && location.protocol === "https:") {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
-}
-</script>
-</body>
-</html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101827"><meta name="description" content="AndroidとiPadを接続する個人利用向けWebRTC試作版"><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./style.css"><title>WebRTC 双方向通信 試作版</title></head>
+<body><header><div class="brand">🔗 WebRTC Link <small>PROTOTYPE v0.1</small></div><span id="roleBadge" class="badge">未選択</span></header><main>
+<section class="panel"><h1>端末を接続</h1><p class="muted">Android・iPadの両方でこのページを開いてください。最初は同じネットワークでのテストがおすすめです。</p>
+<label>GAS WebアプリURL<input id="gasUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="url"></label><div class="row"><button id="saveGas" class="secondary">URLを保存</button><span id="gasStatus" class="muted">未設定</span></div><div class="divider"></div>
+<div class="grid2"><div><h2>📷 Android側</h2><p class="muted">カメラ・マイクを開始して接続コードを発行</p><button id="startHost" class="primary">待機を開始</button><div id="roomBox" class="room hidden"><span>接続コード</span><strong id="roomCode">------</strong></div></div>
+<div><h2>📱 iPad側</h2><p class="muted">Androidに表示されたコードを入力</p><input id="joinCode" inputmode="numeric" maxlength="6" placeholder="6桁コード"><button id="joinGuest" class="primary">接続する</button></div></div><div id="status" class="status" role="status">GAS URLを設定してください。</div></section>
+<section class="panel videoPanel"><div class="videoHead"><h2>ライブ映像</h2><span id="connectionState" class="badge">未接続</span></div><div class="videos"><div><video id="remoteVideo" autoplay playsinline></video><span class="videoLabel">相手側</span></div><div><video id="localVideo" autoplay playsinline muted></video><span class="videoLabel">自分側</span></div></div><audio id="remoteAudio" autoplay></audio>
+<div class="controls"><button id="ptt" class="ptt" disabled>🎙️ 押している間だけ話す</button><button id="switchCamera" class="secondary" disabled>カメラ切替</button><button id="muteMic" class="secondary" disabled>マイク停止</button><button id="stopVideo" class="secondary" disabled>映像停止</button><button id="disconnect" class="danger" disabled>切断</button></div><p id="stats" class="muted">通信統計：未取得</p></section>
+<section class="panel"><h2>ℹ️ 試作版の制限</h2><ul class="muted"><li>ブラウザを閉じたり画面ロックしたりすると通信が停止する場合があります。</li><li>カメラ・マイクは画面上の操作とブラウザの許可が必要です。</li><li>録音・録画・クラウド保存は行いません。映像・音声はWebRTCで直接送信します（TURN利用時を除く）。</li><li>接続コードは短時間だけ有効です。公開・第三者への共有はしないでください。</li></ul></section></main><script src="./app.js" defer></script></body></html>
