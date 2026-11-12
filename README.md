@@ -1,55 +1,38 @@
-# Remote Device Control
+# Android・iPad WebRTC 双方向通信 試作版 v0.1
 
-iPad / iPhone PWA + GitHub Pages + Google Apps Script + Google Sheets + Android companion APK (Java only).
+このブランチは、仕様 v3.0を**ブラウザだけで試すためのWebサイト版**です。Android APK・ネイティブアプリは作りません。
 
-## Features
-- One-time pairing codes (10-minute expiry) and hashed Android device tokens.
-- Authenticated device list, heartbeat, command queue, and WebRTC signaling.
-- Camera/microphone streaming using WebRTC direct P2P; media does not pass through GAS.
-- STUN-only connectivity discovery. No TURN relay is bundled or configured.
-- iPad playback diagnostics, explicit playback recovery button, and ICE/track/frame status.
-- Android foreground services with persistent notifications and explicit local camera/microphone start/stop.
-- PWA shell caching through a service worker; live signaling still requires an internet connection.
+## 構成
+- GitHub Pages: Webサイト（Android Chrome / iPad Safari）
+- Google Apps Script: 接続コード・SDP・ICE候補のシグナリング
+- WebRTC: カメラ・マイクのリアルタイム通信
+- STUN: Google公開STUNを試験利用（TURNは未設定）
 
-## Important Android privacy and background limits
-1. Install and open the Android app while the phone is unlocked.
-2. Register the phone using the one-time code.
-3. Grant camera, microphone, and notification permissions.
-4. Start **「バックグラウンド接続監視」**.
-5. While the app is visible and the phone is unlocked, tap **「この端末のカメラ・マイクを開始」**.
-6. Android displays an ongoing notification and system privacy indicators while capture is active. An already-started foreground session may continue after the screen is locked, depending on Android version, device manufacturer, battery management, and network conditions.
-7. An iPad request while Android is locked can only notify the device owner. The owner must open the app and explicitly start/approve camera and microphone use. The app does not silently start new capture from a remote command.
+## セットアップ
+1. `gas/Code.gs` の内容をGoogle Apps Scriptプロジェクトの `Code.gs` に貼り付けて保存。
+2. **デプロイ → 新しいデプロイ → ウェブアプリ**を選択。
+3. 実行ユーザーを自分、アクセスできるユーザーを「全員」にしてデプロイ。URLを控える。
+4. GitHub Pagesをブランチ `web-prototype-v0.1` の `/(root)` から公開する。
+5. AndroidとiPadで公開URLをHTTPSで開き、GAS URLをそれぞれ保存する。
+6. Androidで「待機を開始」→表示された6桁コードをiPadに入力→「接続する」。
 
-Force Stop, revoked permissions, power-off, privacy toggles, OEM power management, camera use by another app, and network changes can interrupt the session. Screen-off continuity must be tested on the actual phone. No software can guarantee uninterrupted capture on every Android device.
+## 試作版の機能
+- Androidブラウザからカメラ・マイクを取得し、Offerを発行
+- iPadブラウザからコードで参加し、Answerを返す
+- GAS経由のSDP・ICE候補交換
+- Android→iPadの映像・音声
+- iPad→AndroidのPTT音声
+- カメラ切り替え、Androidマイク・映像トラックの停止/再開
+- 切断時のメディア解放
 
-## Network architecture
-- Signaling/control: iPad ↔ GAS ↔ Android.
-- Media: WebRTC direct connection between iPad and Android when the network allows it.
-- STUN: helps peers discover network routes; it does not relay media.
-- TURN is not configured. Some NAT, carrier, Wi-Fi, or firewall combinations will fail with STUN-only connectivity.
-- GAS is used for pairing, commands, and signaling only. It is not a media relay.
+## 重要な制限
+- 初期版はSTUNのみ。TURN未設定のため、異なるネットワーク間では接続できない場合があります。
+- 画面ロック・バックグラウンドでのカメラ/マイク維持は保証しません。
+- GASはシグナリング専用。映像・音声の中継はしません（TURN経由を除く）。
+- 6桁コードは10分で期限切れ。個人テスト用であり、公開サービス向けの認証強度ではありません。
+- GAS Webアプリは「全員」アクセス設定が必要なため、接続コードを他人に共有しないでください。
+- 録音・録画・メディア保存は行いません。
+- GitHub Pagesは公開ファイルです。秘密情報を書かないでください。
 
-## Setup
-1. Create a Google Sheet and open Extensions → Apps Script.
-2. Paste `gas/Code.gs` into the Apps Script project and save.
-3. Run `setup()` once and authorize the requested Sheets permissions.
-4. In Script Properties, add `ADMIN_KEY` with a random secret of at least 24 characters. Keep it private. Add TURN properties only if you have a TURN provider/server.
-5. Deploy as a Web app, execute as the script owner, allow access for the intended clients, and copy the `/exec` URL.
-6. If Apps Script code changes later, deploy a new version (Manage deployments → Edit → New version).
-7. In GitHub repository Settings → Pages, select GitHub Actions.
-8. Wait for **Deploy Remote Device Control PWA** and **Build Android APK** workflows to finish successfully.
-9. Open the GitHub Pages URL on iPad, enter the GAS URL and ADMIN_KEY, save, and issue a pairing code.
-10. Install the latest debug APK on Android, enter the GAS URL and pairing code, and complete registration.
-11. Start connection monitoring, then locally start camera/microphone while Android is unlocked.
-12. On iPad, select the device and tap **「映像・音声に接続」**. If autoplay is blocked, tap **「再生を有効化」**.
-
-## Build output
-GitHub Actions → **Build Android APK** → latest successful run → Artifacts → `remote-device-control-debug-apk`.
-
-## Repository layout
-- `web/`: PWA and WebRTC viewer
-- `gas/Code.gs`: Apps Script API, signaling queue, and ICE credential generation
-- `android/`: Java Android app and foreground media service
-- `.github/workflows/`: APK build and GitHub Pages deployment
-
-Use only on devices you own or have explicit permission to manage. Camera and microphone use must remain visible to and explicitly controlled by the Android device owner.
+## 未実施・未確認
+コードはGitHubへ配置した段階で、実機での動作確認はまだ行っていません。Android/iPadのブラウザ・GASデプロイ後に、接続・音声・映像・切断の順で検証してください。実機動作確認済みとは扱いません。
