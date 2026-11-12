@@ -78,7 +78,7 @@ function readRoom_(p,key){
   const s=JSON.parse(raw);if(Date.now()>s.expires){p.deleteProperty(key);throw new Error('接続コードの有効期限が切れました')}
   return s;
 }
-function validRoom_(v){const s=String(v||'');if(!/^\\d{6}$/.test(s))throw new Error('接続コードは6桁で入力してください');return s}
+function validRoom_(v){const s=String(v||'');if(!/^\d{6}$/.test(s))throw new Error('接続コードは6桁で入力してください');return s}
 function token_(){return Utilities.getUuid().replace(/-/g,'')+Utilities.getUuid().replace(/-/g,'').slice(0,16)}
 function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
 function cleanupExpiredRooms(){
