@@ -1,0 +1,24 @@
+name: Prototype checks
+on:
+  push:
+    branches: [web-prototype-v0.1]
+  pull_request:
+    branches: [web-prototype-v0.1]
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: node --check app.js
+      - name: Check required files
+        run: |
+          test -f index.html
+          test -f style.css
+          test -f app.js
+          test -f manifest.webmanifest
+          test -f sw.js
+          test -f gas/Code.gs
