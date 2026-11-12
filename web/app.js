@@ -1,213 +1,34 @@
-(()=>{"use strict";
-const $=id=>document.getElementById(id);
-const urlInput=$("gasUrl"),keyInput=$("adminKey"),apiState=$("apiState"),devices=$("devices"),message=$("message"),video=$("remoteVideo");
-const state={selected:null,pc:null,sessionId:null,pollTimer:null,statsTimer:null,connecting:false,remoteStream:null,seenTracks:new Set(),lastVideoBytes:0,lastAudioBytes:0,lastFrames:0,lastStatsAt:0};
-const savedUrl=localStorage.getItem("rdc_gas_url")||window.RDC_CONFIG?.GAS_URL||"";
-const savedKey=localStorage.getItem("rdc_admin_key")||"";
-urlInput.value=savedUrl;keyInput.value=savedKey;
-video.autoplay=true;video.playsInline=true;video.muted=false;
-
-function config(){
- const url=urlInput.value.trim(),adminKey=keyInput.value.trim();
- if(!/^https:\/\/script\.google\.com\/macros\/s\/[^\s]+\/exec$/.test(url))throw Error("GAS WebアプリURLを正しく入力してください。");
- if(adminKey.length<24)throw Error("管理者キーは24文字以上にしてください。");
- return{url,adminKey};
-}
-async function api(action,data={}){
- const c=config(),randomBytes=new Uint8Array(16);crypto.getRandomValues(randomBytes);
- const requestId="rdc-"+Array.from(randomBytes,b=>b.toString(16).padStart(2,"0")).join("");
- const frameName=requestId.replace(/[^a-zA-Z0-9_-]/g,"");
- return new Promise((resolve,reject)=>{
-  const frame=document.createElement("iframe"),form=document.createElement("form");
-  frame.name=frameName;frame.title="GAS通信";frame.style.display="none";
-  form.method="POST";form.action=c.url;form.target=frameName;form.style.display="none";
-  const fields={rdcPayload:JSON.stringify({action,adminKey:c.adminKey,...data}),rdcRequestId:requestId};
-  for(const [name,value] of Object.entries(fields)){const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;form.append(input);}
-  let finished=false;
-  const cleanup=()=>{window.removeEventListener("message",onMessage);clearTimeout(timer);form.remove();frame.remove();};
-  const finish=(fn,value)=>{if(finished)return;finished=true;cleanup();fn(value);};
-  const onMessage=event=>{
-   const payload=event.data;
-   if(!payload||payload.channel!=="rdc-api"||payload.requestId!==requestId)return;
-   const result=payload.response;
-   if(!result||typeof result!=="object")return finish(reject,new Error("GASから不正な応答が返りました。"));
-   if(!result.ok)return finish(reject,new Error(result.error||"GAS処理に失敗しました。"));
-   finish(resolve,result);
-  };
-  const timer=setTimeout(()=>finish(reject,new Error("GAS応答がタイムアウトしました。URL・公開設定・通信状態を確認してください。")),30000);
-  window.addEventListener("message",onMessage);document.body.append(frame,form);form.submit();
- });
-}
-function msg(text,error=false){message.textContent=text;message.style.color=error?"#ff9aa8":"#8ee4d6";}
-function setCommandStatus(text){$("commandStatus").textContent=text;}
-function render(list){
- devices.replaceChildren();
- if(!list.length){const p=document.createElement("p");p.className="empty";p.textContent="登録済み端末はありません。";devices.append(p);return;}
- for(const device of list){
-  const card=document.createElement("article"),info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("small"),button=document.createElement("button");
-  card.className="device";name.textContent=device.name||"Android";
-  meta.textContent=(device.online?"🟢 オンライン":"⚫ オフライン")+" · 最終確認: "+(device.lastSeen||"不明");
-  button.className="secondary";button.textContent="操作";
-  button.addEventListener("click",()=>{state.selected=device;$("selectedName").textContent=device.name||"Android";$("controlPanel").hidden=false;setCommandStatus("Android側でカメラ・マイクを開始済みの場合、「映像・音声に接続」を押してください。");});
-  info.append(name,meta);card.append(info,button);devices.append(card);
- }
-}
-async function refresh(){
- try{apiState.textContent="接続中";const response=await api("listDevices");render(response.devices||[]);apiState.textContent="GAS接続済み";}
- catch(error){apiState.textContent="未接続";msg(error.message,true);}
-}
-async function sendSignal(type,payload,sessionId=state.sessionId){
- if(!state.selected)throw Error("端末を選択してください。");
- return api("sendSignal",{fromRole:"web",deviceId:state.selected.deviceId,type,payload,sessionId});
-}
-async function pollSignals(){
- if(!state.pc||!state.selected||!state.sessionId)return;
- try{
-  const response=await api("pollSignals",{role:"web",deviceId:state.selected.deviceId,sessionId:state.sessionId});
-  for(const signal of response.signals||[]){
-   if(signal.type==="ice"){
-    const candidate=JSON.parse(signal.payload);
-    await state.pc.addIceCandidate(new RTCIceCandidate(candidate));
-   }else if(signal.type==="bye"){
-    setCommandStatus("Android側でセッションが終了しました。");
-    endView(false);
-    return;
-   }
-  }
- }catch(error){setCommandStatus("シグナル受信を再試行中: "+error.message);}
-}
-function stopTimers(){
- if(state.pollTimer)clearInterval(state.pollTimer);
- if(state.statsTimer)clearInterval(state.statsTimer);
- state.pollTimer=null;state.statsTimer=null;
-}
-function endView(sendBye=true){
- const oldSession=state.sessionId;
- if(sendBye&&oldSession&&state.selected)sendSignal("bye","",oldSession).catch(()=>{});
- stopTimers();
- if(state.pc){state.pc.ontrack=null;state.pc.close();}
- state.pc=null;state.sessionId=null;state.remoteStream=null;state.seenTracks.clear();state.lastVideoBytes=0;state.lastAudioBytes=0;state.lastFrames=0;state.lastStatsAt=0;
- video.pause();video.srcObject=null;state.connecting=false;
-}
-function updateStats(pc){
- return pc.getStats().then(report=>{
-  let videoBytes=0,audioBytes=0,frames=0;
-  report.forEach(item=>{
-   if(item.type==="inbound-rtp"&&!item.isRemote){
-    if(item.kind==="video"||item.mediaType==="video"){videoBytes+=item.bytesReceived||0;frames+=item.framesDecoded||0;}
-    if(item.kind==="audio"||item.mediaType==="audio")audioBytes+=item.bytesReceived||0;
-   }
-  });
-  if(state.pc!==pc)return;
-  const tracks=state.remoteStream?.getTracks()||[];
-  const hasVideo=tracks.some(track=>track.kind==="video"&&track.readyState==="live");
-  const hasAudio=tracks.some(track=>track.kind==="audio"&&track.readyState==="live");
-  const videoMoving=videoBytes>state.lastVideoBytes,audioMoving=audioBytes>state.lastAudioBytes,framesMoving=frames>state.lastFrames;
-  state.lastVideoBytes=videoBytes;state.lastAudioBytes=audioBytes;state.lastFrames=frames;state.lastStatsAt=Date.now();
-  const parts=[];
-  parts.push("ICE: "+pc.iceConnectionState);
-  parts.push("映像: "+(hasVideo?(video.videoWidth>0?video.videoWidth+"×"+video.videoHeight:"受信・描画待ち"):"未受信"));
-  parts.push("音声: "+(hasAudio?(audioMoving?"受信中":"トラックあり"):"未受信"));
-  parts.push(videoMoving?"映像データ増加中":"映像データ停止");
-  parts.push(framesMoving?"フレーム更新中":"フレーム更新なし");
-  if(video.paused)parts.push("動画一時停止中");else if(video.readyState<2)parts.push("動画データ待機中");
-  if(pc.connectionState==="failed")parts.push("接続失敗");else if(pc.connectionState==="disconnected")parts.push("切断検出");
-  setCommandStatus(parts.join(" / "));
- }).catch(()=>{});
-}
-async function startView(){
- if(!state.selected)return;
- endView();
- state.connecting=true;
- setCommandStatus("Androidから接続情報を待っています。Android側でカメラ・マイクを開始してください。");
- try{
-  // STUNは端末から直接利用。GASはシグナリングのみ、TURN中継は使用しない。
-  const iceServers=[{urls:["stun:stun.l.google.com:19302","stun:stun1.l.google.com:19302"]}];
-  const pc=new RTCPeerConnection({iceServers,iceTransportPolicy:"all",bundlePolicy:"max-bundle",rtcpMuxPolicy:"require",iceCandidatePoolSize:4});
-  state.pc=pc;state.remoteStream=new MediaStream();
-  let answerSent=false;const queuedIce=[];
-  pc.ontrack=event=>{
-   const incomingStream=event.streams&&event.streams[0];
-   if(incomingStream)state.remoteStream=incomingStream;
-   else if(!state.remoteStream.getTracks().some(track=>track.id===event.track.id))state.remoteStream.addTrack(event.track);
-   event.track.enabled=true;
-   state.seenTracks.add(event.track.kind);
-   video.srcObject=state.remoteStream;
-   video.muted=false;video.playsInline=true;
-   event.track.onended=()=>setCommandStatus(event.track.kind==="video"?"Androidの映像が終了しました。":"Androidの音声が終了しました。");
-   video.play().then(()=>setCommandStatus("映像・音声トラックを受信しました。描画と音声を確認中です。"))
-    .catch(()=>setCommandStatus("トラックは届いています。下の「再生を有効化」をタップしてください。"));
-   event.track.onmute=()=>setCommandStatus(event.track.kind+"トラックが一時停止しました。");
-   event.track.onunmute=()=>setCommandStatus(event.track.kind+"トラックが再開しました。");
-   event.track.onended=()=>setCommandStatus(event.track.kind+"トラックが終了しました。");
-  };
-  video.onplaying=()=>{if(state.pc===pc)setCommandStatus("映像を再生中です。音声が聞こえない場合はiPadの音量と動画のミュート状態を確認してください。");};
-  pc.onicecandidate=event=>{
-   if(!event.candidate||!state.sessionId)return;
-   const candidate=JSON.stringify(event.candidate.toJSON());
-   if(!answerSent){queuedIce.push(candidate);return;}
-   sendSignal("ice",candidate).catch(error=>setCommandStatus("ICE送信失敗: "+error.message));
-  };
-  pc.onconnectionstatechange=()=>{
-   if(state.pc!==pc)return;
-   if(pc.connectionState==="failed")setCommandStatus("WebRTC接続失敗。STUNだけでは直接P2Pできないネットワークの可能性があります。");
-   else if(pc.connectionState==="disconnected")setCommandStatus("通信が切断されました。回線復帰後に再接続してください。");
-   else if(pc.connectionState==="connected")setCommandStatus("WebRTC通信接続済み。映像・音声データを確認しています。");
-  };
-  video.onwaiting=()=>{if(state.pc===pc)setCommandStatus("映像データ待機中です。通信状況を診断しています。");};
-  video.onstalled=()=>{if(state.pc===pc)setCommandStatus("映像の受信が停止しました。Android側のカメラと通信状態を確認してください。");};
-  video.onplaying=()=>{if(state.pc===pc)setCommandStatus("映像を再生中です。音声が聞こえない場合は音量と再生設定を確認してください。");};
-  video.onerror=()=>{if(state.pc===pc)setCommandStatus("動画再生エラー: "+(video.error?video.error.message:"詳細不明"));};
-  pc.oniceconnectionstatechange=()=>{if(state.pc===pc&&pc.iceConnectionState==="failed")setCommandStatus("ICE接続失敗。STUNだけでは直接P2Pできないネットワークの可能性があります。");};
-  const deadline=Date.now()+90000;
-  while(Date.now()<deadline&&state.pc===pc&&!state.sessionId){
-   const response=await api("pollSignals",{role:"web",deviceId:state.selected.deviceId});
-   for(const signal of response.signals||[]){
-    if(signal.type==="offer"&&!state.sessionId){
-     state.sessionId=signal.sessionId;
-     await pc.setRemoteDescription(new RTCSessionDescription({type:"offer",sdp:signal.payload}));
-     const answer=await pc.createAnswer();
-     await pc.setLocalDescription(answer);
-     await sendSignal("answer",answer.sdp,state.sessionId);
-     answerSent=true;
-     for(const candidate of queuedIce)await sendSignal("ice",candidate,state.sessionId);
-     queuedIce.length=0;
-    }else if(signal.type==="ice"&&state.sessionId===signal.sessionId){
-     await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(signal.payload)));
-    }else if(signal.type==="bye"){
-     throw new Error("Android側でセッションが終了しました。");
-    }
-   }
-   if(!state.sessionId)await new Promise(resolve=>setTimeout(resolve,1200));
-  }
-  if(!state.sessionId)throw new Error("90秒以内にAndroidから接続情報が届きませんでした。Androidでカメラ・マイクを開始してから再試行してください。");
-  state.pollTimer=setInterval(pollSignals,1200);
-  state.statsTimer=setInterval(()=>updateStats(pc),2500);
-  state.connecting=false;
-  setCommandStatus("接続情報を交換しました。映像・音声の到着を確認しています。");
- }catch(error){
-  state.connecting=false;setCommandStatus(error.message);endView(false);
- }
-}
-$("saveUrl").addEventListener("click",async()=>{
- try{const c=config();localStorage.setItem("rdc_gas_url",c.url);localStorage.setItem("rdc_admin_key",c.adminKey);await api("ping");apiState.textContent="GAS接続済み";msg("GASへの接続を確認しました。");await refresh();}
- catch(error){apiState.textContent="エラー";msg(error.message,true);}
-});
-$("refresh").addEventListener("click",refresh);
-$("createPair").addEventListener("click",async()=>{
- try{const result=await api("createPairCode");$("pairCodeText").textContent=result.pairCode;$("pairResult").hidden=false;msg("登録コードを発行しました。10分以内にAndroidで入力してください。");}
- catch(error){msg(error.message,true);}
-});
-$("closeControl").addEventListener("click",()=>{$("controlPanel").hidden=true;endView();});
-$("viewBtn").addEventListener("click",startView);
-$("enablePlayback").addEventListener("click",async()=>{try{video.muted=false;await video.play();setCommandStatus("再生を開始しました。映像サイズ "+video.videoWidth+"×"+video.videoHeight+" / readyState "+video.readyState);}catch(error){setCommandStatus("再生できません: "+error.message);}});
-$("endViewBtn").addEventListener("click",()=>endView());
-document.querySelectorAll("[data-command]").forEach(button=>button.addEventListener("click",async()=>{
- if(!state.selected)return;
- try{
-  await api("queueCommand",{deviceId:state.selected.deviceId,command:button.dataset.command});
-  setCommandStatus(button.dataset.command==="start_session"?"Androidに開始通知を送りました。通知をタップして開始してください。":button.dataset.command==="stop_session"?"Androidに停止要求を送りました。":"状態確認を要求しました。");
- }catch(error){setCommandStatus(error.message);}
-}));
-if(savedUrl&&savedKey)refresh();
-})();
+'use strict';
+const $=id=>document.getElementById(id),status=$('status'),remoteVideo=$('remoteVideo'),localVideo=$('localVideo'),remoteAudio=$('remoteAudio'),ptt=$('ptt');
+const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'}];
+let role=null,room=null,token=null,pc=null,localStream=null,pttStream=null,pollTimer=null,closed=false,remoteDescriptionReady=false,pendingIce=[],seenSignals=new Set(),cameraFacing='environment',micEnabled=true,videoEnabled=true,signalReady=false,outgoingIce=[];
+const say=t=>status.textContent=t, setState=t=>$('connectionState').textContent=t;
+const gasUrl=()=>$('gasUrl').value.trim();
+function saveGas(){const u=gasUrl();if(!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(u)){say('GAS URLの形式を確認してください。');return false}localStorage.setItem('webrtc_gas_url',u);$('gasStatus').textContent='保存済み';return true}
+let gasFrame=null;
+function api(action,data={}){return new Promise((resolve,reject)=>{const u=gasUrl();if(!u){reject(Error('先にGAS URLを設定してください'));return}if(!gasFrame){gasFrame=document.createElement('iframe');gasFrame.name='gasSignalFrame';gasFrame.style.display='none';document.body.appendChild(gasFrame)}const requestId=randomToken();const timer=setTimeout(()=>{window.removeEventListener('message',listener);reject(Error('GAS応答がタイムアウトしました'))},15000);const listener=e=>{const d=e.data;if(!d||d.channel!=='rdc-api'||d.requestId!==requestId)return;clearTimeout(timer);window.removeEventListener('message',listener);const j=d.response;if(!j||!j.ok){reject(Error(j&&j.error||'GAS処理に失敗しました'));return}resolve(j)};window.addEventListener('message',listener);const form=document.createElement('form');form.method='POST';form.action=u;form.target='gasSignalFrame';form.style.display='none';const payload=document.createElement('input');payload.name='rdcPayload';payload.value=JSON.stringify({action,...data});const id=document.createElement('input');id.name='rdcRequestId';id.value=requestId;form.append(payload,id);document.body.appendChild(form);form.submit();form.remove()})}
+function randomCode(){return String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,'0')}
+function randomToken(){const a=new Uint8Array(24);crypto.getRandomValues(a);return [...a].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function setControls(on){['ptt','switchCamera','muteMic','stopVideo','disconnect'].forEach(id=>$(id).disabled=!on)}
+async function startHost(){if(!saveGas())return;try{await cleanup(false);role='host';room=randomCode();token=randomToken();say('カメラとマイクの許可を確認しています…');localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:{facingMode:cameraFacing,width:{ideal:640},height:{ideal:480},frameRate:{ideal:15,max:20}}});localVideo.srcObject=localStream;pc=makePeer();localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.addTransceiver('audio',{direction:'recvonly'});const offer=await pc.createOffer();await pc.setLocalDescription(offer);await api('createRoom',{room,hostToken:token,offer:pc.localDescription});signalReady=true;for(const c of outgoingIce)await sendIce(c);outgoingIce=[];$('roomCode').textContent=room;$('roomBox').classList.remove('hidden');$('roleBadge').textContent='Android / ホスト';setControls(true);setState('接続待機中');say('待機中です。iPad側に6桁コードを入力してください。');startPolling()}catch(e){say('開始できませんでした：'+friendly(e));await cleanup(false)}}
+async function joinGuest(){const code=$('joinCode').value.trim();if(!/^\d{6}$/.test(code)){say('6桁の接続コードを入力してください。');return}try{await cleanup(false);role='guest';room=code;say('接続情報を確認しています…');const j=await api('joinRoom',{room});token=j.guestToken;pc=makePeer();await pc.setRemoteDescription(j.offer);remoteDescriptionReady=true;await flushIce();pttStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});const audioTrack=pttStream.getAudioTracks()[0];audioTrack.enabled=false;const trans=pc.getTransceivers().find(t=>t.sender.track===null&&t.receiver.track&&t.receiver.track.kind==='audio');if(!trans)throw Error('Android側の音声受信用トラックが見つかりません。Android側を再起動してください。');await trans.sender.replaceTrack(audioTrack);trans.direction='sendonly';const answer=await pc.createAnswer();await pc.setLocalDescription(answer);await api('sendSignal',{room,token,signal:{type:'answer',description:pc.localDescription}});$('roleBadge').textContent='iPad / ゲスト';setControls(true);setState('接続処理中');say('接続処理中です。映像・音声を待っています…');startPolling()}catch(e){say('接続できませんでした：'+friendly(e));await cleanup(false)}}
+function makePeer(){const p=new RTCPeerConnection({iceServers:ICE_SERVERS});p.onicecandidate=e=>{if(!e.candidate)return;if(!signalReady&&role==='host')outgoingIce.push(e.candidate);else sendIce(e.candidate).catch(err=>say('ICE送信エラー：'+friendly(err)))};p.ontrack=e=>{const stream=e.streams&&e.streams[0];if(e.track.kind==='video'){if(stream)remoteVideo.srcObject=stream;else{const s=remoteVideo.srcObject||new MediaStream();s.addTrack(e.track);remoteVideo.srcObject=s}remoteVideo.play().catch(()=>{})}else{if(stream)remoteAudio.srcObject=stream;else{const s=remoteAudio.srcObject||new MediaStream();s.addTrack(e.track);remoteAudio.srcObject=s}remoteAudio.play().catch(()=>say('音声再生には画面を一度タップしてください。'))}};p.onconnectionstatechange=()=>{setState(p.connectionState);if(p.connectionState==='connected')say('WebRTC接続済みです。映像・音声を確認してください。');if(p.connectionState==='failed')say('接続に失敗しました。ネットワークまたはTURN設定を確認してください。');if(p.connectionState==='disconnected')say('通信が一時的に切断されました。復旧を待っています…')};p.oniceconnectionstatechange=()=>{if(p.iceConnectionState==='failed')say('ICE接続に失敗しました。初期試作版はSTUNのみです。')};return p}
+async function sendIce(candidate){if(room&&token)await api('sendSignal',{room,token,signal:{type:'ice',candidate}})}
+async function poll(){if(!room||!token||closed)return;try{const j=await api('poll',{room,token});for(const item of j.messages||[]){if(seenSignals.has(item.id))continue;seenSignals.add(item.id);await handleSignal(item.signal)}}catch(e){say('シグナリング確認エラー：'+friendly(e))}}
+async function handleSignal(s){if(!pc)return;if(s.type==='answer'&&role==='host'){if(pc.signalingState!=='have-local-offer')return;await pc.setRemoteDescription(s.description);remoteDescriptionReady=true;await flushIce()}else if(s.type==='ice'){if(remoteDescriptionReady)await pc.addIceCandidate(s.candidate);else pendingIce.push(s.candidate)}else if(s.type==='close'){say('相手が切断しました。');await cleanup(false)}}
+async function flushIce(){for(const c of pendingIce){try{await pc.addIceCandidate(c)}catch(e){console.warn('保留ICEを追加できません',e)}}pendingIce=[]}
+function startPolling(){clearInterval(pollTimer);pollTimer=setInterval(poll,1000);poll()}
+function startPtt(){if(role!=='guest'||!pttStream)return;pttStream.getAudioTracks().forEach(t=>t.enabled=true);ptt.classList.add('active');ptt.textContent='🔴 送信中（離すと停止）'}
+function stopPtt(){if(pttStream)pttStream.getAudioTracks().forEach(t=>t.enabled=false);ptt.classList.remove('active');ptt.textContent='🎙️ 押している間だけ話す'}
+async function switchCamera(){if(role!=='host'||!localStream)return;try{cameraFacing=cameraFacing==='environment'?'user':'environment';const next=await navigator.mediaDevices.getUserMedia({video:{facingMode:cameraFacing,width:{ideal:640},height:{ideal:480},frameRate:{ideal:15,max:20}},audio:false});const track=next.getVideoTracks()[0],sender=pc.getSenders().find(s=>s.track&&s.track.kind==='video');if(sender)await sender.replaceTrack(track);const old=localStream.getVideoTracks()[0];localStream.removeTrack(old);old.stop();localStream.addTrack(track);localVideo.srcObject=localStream;say('カメラを切り替えました。')}catch(e){say('カメラ切替失敗：'+friendly(e))}}
+async function cleanup(notify=true){closed=true;clearInterval(pollTimer);stopPtt();if(notify&&room&&token)api('sendSignal',{room,token,signal:{type:'close'}}).catch(()=>{});if(pc){pc.onicecandidate=null;pc.ontrack=null;pc.close();pc=null}for(const s of [localStream,pttStream])if(s)s.getTracks().forEach(t=>t.stop());localStream=null;pttStream=null;localVideo.srcObject=null;remoteVideo.srcObject=null;remoteAudio.srcObject=null;pendingIce=[];outgoingIce=[];seenSignals.clear();room=null;token=null;role=null;remoteDescriptionReady=false;signalReady=false;setControls(false);setState('未接続');$('roleBadge').textContent='未選択';$('roomBox').classList.add('hidden');closed=false}
+function friendly(e){if(e&&e.name==='NotAllowedError')return'カメラまたはマイクの許可が必要です';if(e&&e.name==='NotFoundError')return'カメラまたはマイクが見つかりません';return e&&e.message?e.message:String(e)}
+$('saveGas').onclick=()=>{if(saveGas())say('GAS URLをこの端末に保存しました。')};$('startHost').onclick=startHost;$('joinGuest').onclick=joinGuest;
+$('disconnect').onclick=async()=>{await cleanup(true);say('切断しました。')};$('switchCamera').onclick=switchCamera;
+$('muteMic').onclick=()=>{if(!localStream)return;micEnabled=!micEnabled;localStream.getAudioTracks().forEach(t=>t.enabled=micEnabled);$('muteMic').textContent=micEnabled?'マイク停止':'マイク再開'};
+$('stopVideo').onclick=()=>{if(!localStream)return;videoEnabled=!videoEnabled;localStream.getVideoTracks().forEach(t=>t.enabled=videoEnabled);$('stopVideo').textContent=videoEnabled?'映像停止':'映像再開'};
+ptt.addEventListener('pointerdown',e=>{if(!ptt.disabled){e.preventDefault();ptt.setPointerCapture(e.pointerId);startPtt()}});
+['pointerup','pointercancel','lostpointercapture'].forEach(ev=>ptt.addEventListener(ev,stopPtt));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPtt()});window.addEventListener('pagehide',()=>{stopPtt();if(pc)pc.close()});
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+(()=>{const saved=localStorage.getItem('webrtc_gas_url');if(saved){$('gasUrl').value=saved;$('gasStatus').textContent='保存済み';say('GAS URLを読み込みました。Android側またはiPad側を選んでください。')}if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)say('このブラウザではカメラ・マイクを利用できません。HTTPSで開いてください。')})();
